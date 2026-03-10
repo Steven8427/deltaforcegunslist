@@ -7,16 +7,15 @@ const CATS = ["突击步枪","战斗步枪","射手步枪","冲锋枪","机枪",
 function Admin({ isAdmin, setIsAdmin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [tab, setTab] = useState('authors'); // authors | guns
+  const [tab, setTab] = useState('authors');
   const [authors, setAuthors] = useState([]);
   const [guns, setGuns] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // 作者表单
   const [newAuthor, setNewAuthor] = useState({ name: '', slug: '', description: '' });
   const [newAuthorAvatar, setNewAuthorAvatar] = useState(null);
+  const [editingAuthor, setEditingAuthor] = useState(null);
 
-  // 枪械表单
   const [selectedAuthorId, setSelectedAuthorId] = useState('');
   const [newGunName, setNewGunName] = useState('');
   const [newGunCategory, setNewGunCategory] = useState('突击步枪');
@@ -55,98 +54,74 @@ function Admin({ isAdmin, setIsAdmin }) {
     return supabase.storage.from('gun-images').getPublicUrl(name).data.publicUrl;
   }
 
-  // ========== 作者管理 ==========
+  // 作者
   async function addAuthor() {
     if (!newAuthor.name.trim() || !newAuthor.slug.trim()) { toast.error('名称和slug必填'); return; }
     setUploadingImage(true);
     let avatarUrl = null;
     try { if (newAuthorAvatar) avatarUrl = await uploadImage(newAuthorAvatar); } catch { toast.error('头像上传失败'); setUploadingImage(false); return; }
     const mx = authors.reduce((m, a) => Math.max(m, a.sort_order || 0), 0);
-    const { error } = await supabase.from('authors').insert({
-      name: newAuthor.name.trim(), slug: newAuthor.slug.trim().toLowerCase(),
-      description: newAuthor.description, avatar_url: avatarUrl, sort_order: mx + 1,
-    });
-    if (error) { toast.error('添加失败: ' + error.message); setUploadingImage(false); return; }
+    const { error } = await supabase.from('authors').insert({ name: newAuthor.name.trim(), slug: newAuthor.slug.trim().toLowerCase(), description: newAuthor.description, avatar_url: avatarUrl, sort_order: mx + 1 });
+    if (error) { toast.error('失败: ' + error.message); setUploadingImage(false); return; }
     toast.success(`${newAuthor.name} 添加成功！`);
-    setNewAuthor({ name: '', slug: '', description: '' }); setNewAuthorAvatar(null); setUploadingImage(false);
-    fetchAll();
+    setNewAuthor({ name: '', slug: '', description: '' }); setNewAuthorAvatar(null); setUploadingImage(false); fetchAll();
   }
 
   async function deleteAuthor(id, name) {
     if (!window.confirm(`删除 ${name}？其下所有枪械也会被删除！`)) return;
-    // 先删枪下的改装码，再删枪，最后删作者
-    const authorGuns = guns.filter(g => g.author_id === id);
-    for (const g of authorGuns) {
-      await supabase.from('gun_variants').delete().eq('gun_id', g.id);
-      await supabase.from('guns').delete().eq('id', g.id);
-    }
+    const ag = guns.filter(g => g.author_id === id);
+    for (const g of ag) { await supabase.from('gun_variants').delete().eq('gun_id', g.id); await supabase.from('guns').delete().eq('id', g.id); }
     await supabase.from('authors').delete().eq('id', id);
-    toast.success(`${name} 已删除`);
-    fetchAll();
+    toast.success(`${name} 已删除`); fetchAll();
   }
 
-  async function updateAuthorAvatar(authorId, file) {
-    try {
-      const url = await uploadImage(file);
-      await supabase.from('authors').update({ avatar_url: url }).eq('id', authorId);
-      toast.success('头像更新！'); fetchAll();
-    } catch { toast.error('上传失败'); }
+  async function updateAuthorAvatar(id, file) {
+    try { const url = await uploadImage(file); await supabase.from('authors').update({ avatar_url: url }).eq('id', id); toast.success('头像更新！'); fetchAll(); } catch { toast.error('失败'); }
   }
 
-  // ========== 枪械管理 ==========
+  async function saveAuthorEdit() {
+    if (!editingAuthor) return;
+    if (!editingAuthor.name.trim() || !editingAuthor.slug.trim()) { toast.error('名称和slug不能为空'); return; }
+    const { error } = await supabase.from('authors').update({ name: editingAuthor.name.trim(), slug: editingAuthor.slug.trim().toLowerCase(), description: editingAuthor.description || '' }).eq('id', editingAuthor.id);
+    if (error) { toast.error('失败: ' + error.message); return; }
+    toast.success('作者信息已更新！'); setEditingAuthor(null); fetchAll();
+  }
+
+  // 枪械
   const authorGuns = guns.filter(g => g.author_id === selectedAuthorId);
   const selectedGun = guns.find(g => g.id === selectedGunId);
 
   async function addGun() {
     if (!selectedAuthorId) { toast.error('请先选择作者'); return; }
-    if (!newGunName.trim()) { toast.error('请输入枪械名称'); return; }
+    if (!newGunName.trim()) { toast.error('请输入名称'); return; }
     setUploadingImage(true);
     let imageUrl = null;
-    try { if (newGunImage) imageUrl = await uploadImage(newGunImage); } catch { toast.error('图片上传失败'); setUploadingImage(false); return; }
+    try { if (newGunImage) imageUrl = await uploadImage(newGunImage); } catch { toast.error('图片失败'); setUploadingImage(false); return; }
     const mx = guns.reduce((m, g) => Math.max(m, g.sort_order || 0), 0);
-    await supabase.from('guns').insert({
-      name: newGunName.trim(), category: newGunCategory, image_url: imageUrl,
-      author_id: selectedAuthorId, sort_order: mx + 1,
-    });
-    toast.success(`${newGunName} 添加成功！`);
-    setNewGunName(''); setNewGunCategory('突击步枪'); setNewGunImage(null); setUploadingImage(false); fetchAll();
+    await supabase.from('guns').insert({ name: newGunName.trim(), category: newGunCategory, image_url: imageUrl, author_id: selectedAuthorId, sort_order: mx + 1 });
+    toast.success(`${newGunName} 添加成功！`); setNewGunName(''); setNewGunCategory('突击步枪'); setNewGunImage(null); setUploadingImage(false); fetchAll();
   }
 
-  async function deleteGun(gunId, name) {
-    if (!window.confirm(`删除 ${name}？`)) return;
-    await supabase.from('guns').delete().eq('id', gunId);
-    toast.success('已删除'); if (selectedGunId === gunId) setSelectedGunId(''); fetchAll();
-  }
+  async function deleteGun(id, name) { if (!window.confirm(`删除 ${name}？`)) return; await supabase.from('guns').delete().eq('id', id); toast.success('已删除'); if (selectedGunId === id) setSelectedGunId(''); fetchAll(); }
+  async function updateGunImage(id, file) { try { const url = await uploadImage(file); await supabase.from('guns').update({ image_url: url }).eq('id', id); toast.success('更新！'); fetchAll(); } catch { toast.error('失败'); } }
+  async function updateGunCategory(id, cat) { await supabase.from('guns').update({ category: cat }).eq('id', id); toast.success('已更新'); fetchAll(); }
 
-  async function updateGunImage(gunId, file) {
-    try { const url = await uploadImage(file); await supabase.from('guns').update({ image_url: url }).eq('id', gunId); toast.success('图片更新！'); fetchAll(); } catch { toast.error('失败'); }
-  }
-
-  async function updateGunCategory(gunId, category) {
-    await supabase.from('guns').update({ category }).eq('id', gunId); toast.success('分类已更新'); fetchAll();
-  }
-
-  // ========== 改装码管理 ==========
+  // 改装码
   async function addVariant() {
-    if (!selectedGunId || !variantForm.code.trim() || !variantForm.mod_type.trim()) { toast.error('请填写完整'); return; }
+    if (!selectedGunId || !variantForm.code.trim() || !variantForm.mod_type.trim()) { toast.error('填写完整'); return; }
     const gun = guns.find(g => g.id === selectedGunId);
     const mx = gun ? gun.variants.reduce((m, v) => Math.max(m, v.sort_order || 0), 0) : 0;
     await supabase.from('gun_variants').insert({ gun_id: selectedGunId, ...variantForm, sort_order: mx + 1 });
     toast.success('添加成功！'); setVariantForm({ version: 'T0', price: '', mod_type: '', code: '', effective_range: '' }); fetchAll();
   }
-
   async function deleteVariant(id) { if (!window.confirm('确定？')) return; await supabase.from('gun_variants').delete().eq('id', id); toast.success('已删除'); fetchAll(); }
-
   async function updateVariant() {
     if (!editingVariant) return;
-    await supabase.from('gun_variants').update({
-      version: editingVariant.version, price: editingVariant.price, mod_type: editingVariant.mod_type,
-      code: editingVariant.code, effective_range: editingVariant.effective_range,
-    }).eq('id', editingVariant.id);
+    await supabase.from('gun_variants').update({ version: editingVariant.version, price: editingVariant.price, mod_type: editingVariant.mod_type, code: editingVariant.code, effective_range: editingVariant.effective_range }).eq('id', editingVariant.id);
     toast.success('更新成功！'); setEditingVariant(null); fetchAll();
   }
 
-  // ========== 未登录 ==========
+  // 未登录
   if (!isAdmin) {
     return (
       <div className="admin-login">
@@ -162,7 +137,6 @@ function Admin({ isAdmin, setIsAdmin }) {
 
   const selAuthor = authors.find(a => a.id === selectedAuthorId);
 
-  // ========== 已登录 ==========
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -170,25 +144,24 @@ function Admin({ isAdmin, setIsAdmin }) {
         <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); toast.success('已退出'); }}>退出</button>
       </div>
 
-      {/* TAB 切换 */}
       <div style={{ display: 'flex', gap: 6 }}>
         {[['authors', '👤 作者管理'], ['guns', '🔫 枪械管理']].map(([k, l]) => (
           <button key={k} className={`filter-chip ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
 
-      {/* ========== 作者管理 TAB ========== */}
+      {/* ===== 作者管理 ===== */}
       {tab === 'authors' && (<>
         <div className="admin-section">
           <h3>➕ 添加作者/主播</h3>
           <div className="form-row">
-            <div className="form-group"><label>名称</label><input type="text" value={newAuthor.name} onChange={e => setNewAuthor({ ...newAuthor, name: e.target.value })} placeholder="例如: 聪聪" /></div>
-            <div className="form-group"><label>Slug (网址路径)</label><input type="text" value={newAuthor.slug} onChange={e => setNewAuthor({ ...newAuthor, slug: e.target.value.replace(/\s/g, '') })} placeholder="例如: congcong" /></div>
+            <div className="form-group"><label>名称</label><input type="text" value={newAuthor.name} onChange={e => setNewAuthor({ ...newAuthor, name: e.target.value })} placeholder="聪聪" /></div>
+            <div className="form-group"><label>Slug (网址路径)</label><input type="text" value={newAuthor.slug} onChange={e => setNewAuthor({ ...newAuthor, slug: e.target.value.replace(/\s/g, '') })} placeholder="congcong" /></div>
             <div className="form-group"><label>简介</label><input type="text" value={newAuthor.description} onChange={e => setNewAuthor({ ...newAuthor, description: e.target.value })} placeholder="一句话简介" /></div>
             <div className="form-group"><label>头像</label><input type="file" accept="image/*" onChange={e => setNewAuthorAvatar(e.target.files[0] || null)} style={{ padding: '7px 10px' }} /></div>
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
-            Slug 就是网址路径，比如填 <code>congcong</code>，访问地址就是 <code>/author/congcong</code>
+            填 <code style={{ color: 'var(--accent)' }}>congcong</code> → 访问 <code style={{ color: 'var(--accent)' }}>/author/congcong</code>
           </p>
           <button className="btn btn-primary" onClick={addAuthor} disabled={uploadingImage}>{uploadingImage ? '上传中...' : '添加作者'}</button>
         </div>
@@ -196,58 +169,78 @@ function Admin({ isAdmin, setIsAdmin }) {
         <div className="admin-section">
           <h3>📋 作者列表 ({authors.length})</h3>
           {authors.map(a => (
-            <div key={a.id} className="admin-gun-item">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {a.avatar_url ? (
-                  <img src={a.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }} />
-                ) : (
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(30,204,96,0.1)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{a.name.charAt(0)}</div>
-                )}
+            <div key={a.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+              {editingAuthor?.id === a.id ? (
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{a.slug} · {guns.filter(g => g.author_id === a.id).length} 把枪</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    {a.avatar_url
+                      ? <img src={a.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }} />
+                      : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(30,204,96,0.1)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{a.name.charAt(0)}</div>
+                    }
+                    <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }}>编辑作者信息</span>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label>名称</label><input type="text" value={editingAuthor.name} onChange={e => setEditingAuthor({ ...editingAuthor, name: e.target.value })} /></div>
+                    <div className="form-group"><label>Slug</label><input type="text" value={editingAuthor.slug} onChange={e => setEditingAuthor({ ...editingAuthor, slug: e.target.value.replace(/\s/g, '') })} /></div>
+                    <div className="form-group"><label>简介</label><input type="text" value={editingAuthor.description || ''} onChange={e => setEditingAuthor({ ...editingAuthor, description: e.target.value })} /></div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <button className="btn btn-primary btn-small" onClick={saveAuthorEdit}>保存</button>
+                    <button className="btn btn-small" onClick={() => setEditingAuthor(null)} style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}>取消</button>
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 5 }}>
-                <label className="btn btn-small" style={{ cursor: 'pointer', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
-                  📷 换头像
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) updateAuthorAvatar(a.id, e.target.files[0]); }} />
-                </label>
-                <button className="btn btn-danger btn-small" onClick={() => deleteAuthor(a.id, a.name)}>删除</button>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {a.avatar_url
+                      ? <img src={a.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }} />
+                      : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(30,204,96,0.1)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{a.name.charAt(0)}</div>
+                    }
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        /{a.slug} · {guns.filter(g => g.author_id === a.id).length} 把枪
+                        {a.description && <span> · {a.description}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    <label className="btn btn-small" style={{ cursor: 'pointer', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                      📷 头像<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) updateAuthorAvatar(a.id, e.target.files[0]); }} />
+                    </label>
+                    <button className="btn btn-success btn-small" onClick={() => setEditingAuthor({ ...a })}>✏️ 编辑</button>
+                    <button className="btn btn-danger btn-small" onClick={() => deleteAuthor(a.id, a.name)}>删除</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       </>)}
 
-      {/* ========== 枪械管理 TAB ========== */}
+      {/* ===== 枪械管理 ===== */}
       {tab === 'guns' && (<>
-        {/* 选择作者 */}
         <div className="admin-section">
           <h3>👤 选择作者</h3>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {authors.map(a => (
               <button key={a.id} className={`filter-chip ${selectedAuthorId === a.id ? 'active' : ''}`}
-                onClick={() => { setSelectedAuthorId(a.id); setSelectedGunId(''); }}>
-                {a.name} ({guns.filter(g => g.author_id === a.id).length})
-              </button>
+                onClick={() => { setSelectedAuthorId(a.id); setSelectedGunId(''); }}>{a.name} ({guns.filter(g => g.author_id === a.id).length})</button>
             ))}
           </div>
         </div>
 
         {selAuthor && (<>
-          {/* 添加枪械 */}
           <div className="admin-section">
             <h3>➕ 给「{selAuthor.name}」添加枪械</h3>
             <div className="form-row">
-              <div className="form-group"><label>枪械名称</label><input type="text" value={newGunName} onChange={e => setNewGunName(e.target.value)} placeholder="AK-47" /></div>
+              <div className="form-group"><label>名称</label><input type="text" value={newGunName} onChange={e => setNewGunName(e.target.value)} placeholder="AK-47" /></div>
               <div className="form-group"><label>分类</label><select value={newGunCategory} onChange={e => setNewGunCategory(e.target.value)}>{CATS.map(c => <option key={c}>{c}</option>)}</select></div>
               <div className="form-group"><label>图片</label><input type="file" accept="image/*" onChange={e => setNewGunImage(e.target.files[0] || null)} style={{ padding: '7px 10px' }} /></div>
             </div>
-            <button className="btn btn-primary" onClick={addGun} disabled={uploadingImage}>{uploadingImage ? '上传中...' : '添加枪械'}</button>
+            <button className="btn btn-primary" onClick={addGun} disabled={uploadingImage}>{uploadingImage ? '上传中...' : '添加'}</button>
           </div>
 
-          {/* 枪械列表 */}
           <div className="admin-section">
             <h3>📋 {selAuthor.name} 的枪械 ({authorGuns.length})</h3>
             {authorGuns.map(gun => (
@@ -274,7 +267,6 @@ function Admin({ isAdmin, setIsAdmin }) {
             ))}
           </div>
 
-          {/* 改装码管理 */}
           {selectedGun && (
             <div className="admin-section">
               <h3>🛠️ {selectedGun.name} <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 10, fontSize: 11, background: 'rgba(30,204,96,0.1)', color: 'var(--accent)', border: '1px solid rgba(30,204,96,0.2)' }}>{selectedGun.category}</span></h3>
@@ -289,7 +281,6 @@ function Admin({ isAdmin, setIsAdmin }) {
                 <div className="form-group"><label>改枪码</label><input type="text" value={variantForm.code} onChange={e => setVariantForm({ ...variantForm, code: e.target.value })} placeholder="完整改枪码" /></div>
                 <button className="btn btn-primary" onClick={addVariant}>添加</button>
               </div>
-
               <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>已有 ({selectedGun.variants.length})</div>
               <div className="table-scroll">
                 <table className="variants-table">
