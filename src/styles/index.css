@@ -1,0 +1,540 @@
+:root {
+  --bg-primary: #0a0c10;
+  --bg-secondary: #12151c;
+  --bg-card: #181c25;
+  --bg-row-odd: #1a1e28;
+  --bg-row-even: #141820;
+  --bg-highlight: #2a1f0a;
+  --border: #2a2f3a;
+  --border-accent: #c8922033;
+  --text-primary: #e8eaf0;
+  --text-secondary: #8a90a0;
+  --text-muted: #5a6070;
+  --accent: #c89220;
+  --accent-bright: #f0b840;
+  --accent-dim: #8a6510;
+  --danger: #d44040;
+  --danger-hover: #e05050;
+  --success: #40a860;
+  --success-hover: #50c070;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Sans SC', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(200,146,32,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(200,146,32,0.03) 0%, transparent 60%);
+}
+
+/* ========= HEADER ========= */
+.site-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+}
+
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
+  font-size: 20px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--accent);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-icon span {
+  color: var(--bg-primary);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.nav-links {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-link {
+  padding: 8px 16px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: var(--accent);
+  background: rgba(200,146,32,0.08);
+  border-color: rgba(200,146,32,0.15);
+}
+
+/* ========= MAIN ========= */
+.main-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+/* ========= HOME PAGE ========= */
+.page-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--accent);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-bottom: 32px;
+}
+
+.search-bar {
+  margin-bottom: 32px;
+  position: relative;
+}
+
+.search-bar input {
+  width: 100%;
+  max-width: 480px;
+  padding: 12px 16px 12px 44px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-bar input:focus {
+  border-color: var(--accent-dim);
+}
+
+.search-bar .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+/* ========= GUN CARD ========= */
+.gun-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 24px;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+
+.gun-card:hover {
+  border-color: var(--border-accent);
+}
+
+.gun-card-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, rgba(200,146,32,0.08) 0%, transparent 60%);
+  border-bottom: 1px solid var(--border);
+}
+
+.gun-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(200,146,32,0.12);
+  border: 1px solid rgba(200,146,32,0.2);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.gun-name {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--accent-bright);
+  letter-spacing: 1px;
+}
+
+.gun-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ========= TABLE ========= */
+.variants-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.variants-table th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.variants-table td {
+  padding: 12px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(42,47,58,0.5);
+  color: var(--text-primary);
+}
+
+.variants-table tr:nth-child(odd) td {
+  background: var(--bg-row-odd);
+}
+
+.variants-table tr:nth-child(even) td {
+  background: var(--bg-row-even);
+}
+
+.variants-table tr:hover td {
+  background: rgba(200,146,32,0.06);
+}
+
+.variants-table tr.highlight td {
+  background: var(--bg-highlight);
+  border-bottom-color: rgba(200,146,32,0.15);
+}
+
+.version-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.version-t0 {
+  background: rgba(64,168,96,0.15);
+  color: #60d080;
+  border: 1px solid rgba(64,168,96,0.25);
+}
+
+.version-t1 {
+  background: rgba(80,140,220,0.15);
+  color: #70b0f0;
+  border: 1px solid rgba(80,140,220,0.25);
+}
+
+.version-t2 {
+  background: rgba(200,100,200,0.15);
+  color: #d080d0;
+  border: 1px solid rgba(200,100,200,0.25);
+}
+
+.code-cell {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+  word-break: break-all;
+}
+
+.code-cell:hover {
+  color: var(--accent-bright);
+}
+
+.code-cell .copy-hint {
+  display: none;
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--bg-primary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+
+.code-cell:hover .copy-hint {
+  display: block;
+}
+
+.range-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(200,146,32,0.1);
+  color: var(--accent);
+  border: 1px solid rgba(200,146,32,0.2);
+}
+
+/* ========= ADMIN PAGE ========= */
+.admin-login {
+  max-width: 400px;
+  margin: 80px auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+}
+
+.admin-login h2 {
+  font-family: 'Orbitron', sans-serif;
+  color: var(--accent);
+  margin-bottom: 24px;
+  font-size: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--accent-dim);
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.btn-primary:hover {
+  background: var(--accent-bright);
+}
+
+.btn-danger {
+  background: rgba(212,64,64,0.15);
+  color: var(--danger);
+  border: 1px solid rgba(212,64,64,0.25);
+}
+
+.btn-danger:hover {
+  background: rgba(212,64,64,0.25);
+}
+
+.btn-success {
+  background: rgba(64,168,96,0.15);
+  color: var(--success);
+  border: 1px solid rgba(64,168,96,0.25);
+}
+
+.btn-success:hover {
+  background: rgba(64,168,96,0.25);
+}
+
+.btn-small {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+/* ========= ADMIN PANEL ========= */
+.admin-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.admin-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.admin-section h3 {
+  font-family: 'Orbitron', sans-serif;
+  color: var(--accent);
+  font-size: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-gun-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-gun-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+}
+
+.admin-gun-item:hover {
+  border-color: var(--border-accent);
+}
+
+.admin-gun-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-gun-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-variant-form {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+/* ========= TOAST ========= */
+.toast-success {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--success) !important;
+}
+
+.toast-error {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--danger) !important;
+}
+
+/* ========= LOADING ========= */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========= RESPONSIVE ========= */
+@media (max-width: 768px) {
+  .variants-table { font-size: 12px; }
+  .variants-table th, .variants-table td { padding: 8px 10px; }
+  .gun-card-header { padding: 14px 16px; }
+  .page-title { font-size: 22px; }
+  .header-inner { height: 56px; }
+  .logo { font-size: 16px; }
+  .form-row { grid-template-columns: 1fr; }
+  .main-content { padding: 20px 12px; }
+
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
