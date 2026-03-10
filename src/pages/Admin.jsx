@@ -10,6 +10,8 @@ function Admin({ isAdmin, setIsAdmin }) {
 
   // 新增枪械表单
   const [newGunName, setNewGunName] = useState('');
+  const [newGunImage, setNewGunImage] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // 新增改装码表单
   const [selectedGunId, setSelectedGunId] = useState('');
@@ -71,6 +73,34 @@ function Admin({ isAdmin, setIsAdmin }) {
     toast.success('登录成功！');
   }
 
+  // ===== 图片上传 =====
+  async function uploadImage(file) {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+    const { error } = await supabase.storage
+      .from('gun-images')
+      .upload(fileName, file);
+    if (error) throw error;
+    const { data: urlData } = supabase.storage
+      .from('gun-images')
+      .getPublicUrl(fileName);
+    return urlData.publicUrl;
+  }
+
+  async function updateGunImage(gunId, file) {
+    setUploadingImage(true);
+    try {
+      const imageUrl = await uploadImage(file);
+      const { error } = await supabase.from('guns').update({ image_url: imageUrl }).eq('id', gunId);
+      if (error) throw error;
+      toast.success('图片更新成功！');
+      fetchGuns();
+    } catch (err) {
+      toast.error('图片上传失败: ' + err.message);
+    }
+    setUploadingImage(false);
+  }
+
   // ===== 枪械 CRUD =====
   async function addGun() {
     if (!newGunName.trim()) {
@@ -78,21 +108,39 @@ function Admin({ isAdmin, setIsAdmin }) {
       return;
     }
 
+    setUploadingImage(true);
+    let imageUrl = null;
+    try {
+      if (newGunImage) {
+        imageUrl = await uploadImage(newGunImage);
+      }
+    } catch (err) {
+      toast.error('图片上传失败: ' + err.message);
+      setUploadingImage(false);
+      return;
+    }
+
     const maxSort = guns.reduce((max, g) => Math.max(max, g.sort_order || 0), 0);
     const { error } = await supabase.from('guns').insert({
       name: newGunName.trim(),
+      image_url: imageUrl,
       sort_order: maxSort + 1,
     });
 
     if (error) {
       toast.error('添加失败: ' + error.message);
+      setUploadingImage(false);
       return;
     }
 
     toast.success(`${newGunName} 添加成功！`);
     setNewGunName('');
+    setNewGunImage(null);
+    setUploadingImage(false);
+    // Reset file input
+    const fileInput = document.getElementById('gun-image-input');
+    if (fileInput) fileInput.value = '';
     fetchGuns();
-  }
 
   async function deleteGun(gunId, gunName) {
     if (!window.confirm(`确定删除 ${gunName} 及其所有改装码吗？`)) return;
@@ -227,8 +275,8 @@ function Admin({ isAdmin, setIsAdmin }) {
       {/* 添加新枪械 */}
       <div className="admin-section">
         <h3>➕ 添加新枪械</h3>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+        <div className="form-row">
+          <div className="form-group">
             <label>枪械名称</label>
             <input
               type="text"
@@ -238,10 +286,29 @@ function Admin({ isAdmin, setIsAdmin }) {
               onKeyDown={e => e.key === 'Enter' && addGun()}
             />
           </div>
-          <button className="btn btn-primary" onClick={addGun}>
-            添加枪械
-          </button>
+          <div className="form-group">
+            <label>枪械图片</label>
+            <input
+              id="gun-image-input"
+              type="file"
+              accept="image/*"
+              onChange={e => setNewGunImage(e.target.files[0] || null)}
+              style={{ padding: '7px 10px' }}
+            />
+          </div>
         </div>
+        {newGunImage && (
+          <div style={{ marginBottom: 12 }}>
+            <img
+              src={URL.createObjectURL(newGunImage)}
+              alt="预览"
+              style={{ height: 60, borderRadius: 8, border: '1px solid var(--border)' }}
+            />
+          </div>
+        )}
+        <button className="btn btn-primary" onClick={addGun} disabled={uploadingImage}>
+          {uploadingImage ? '上传中...' : '添加枪械'}
+        </button>
       </div>
 
       {/* 枪械列表 */}
@@ -258,7 +325,12 @@ function Admin({ isAdmin, setIsAdmin }) {
                 style={selectedGunId === gun.id ? { borderColor: 'var(--accent-dim)' } : {}}
               >
                 <div className="admin-gun-info">
-                  <span style={{ fontSize: 18 }}>🔫</span>
+                  {gun.image_url ? (
+                    <img src={gun.image_url} alt={gun.name}
+                      style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 6, background: 'rgba(200,146,32,0.08)' }} />
+                  ) : (
+                    <span style={{ fontSize: 18 }}>🔫</span>
+                  )}
                   <div>
                     <div style={{ fontWeight: 600 }}>{gun.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -267,6 +339,11 @@ function Admin({ isAdmin, setIsAdmin }) {
                   </div>
                 </div>
                 <div className="admin-gun-actions">
+                  <label className="btn btn-small" style={{ cursor: 'pointer', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                    📷 {gun.image_url ? '换图' : '传图'}
+                    <input type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => { if (e.target.files[0]) updateGunImage(gun.id, e.target.files[0]); }} />
+                  </label>
                   <button
                     className="btn btn-success btn-small"
                     onClick={() => setSelectedGunId(gun.id)}

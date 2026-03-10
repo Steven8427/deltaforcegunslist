@@ -16,9 +16,9 @@ function App() {
           className: 'toast-success',
           duration: 2000,
           style: {
-            background: '#181c25',
-            color: '#e8eaf0',
-            border: '1px solid #2a2f3a',
+            background: '#131b1f',
+            color: '#e0f0e8',
+            border: '1px solid #1e2e28',
           },
         }}
       />
@@ -26,8 +26,8 @@ function App() {
       <header className="site-header">
         <div className="header-inner">
           <Link to="/" className="logo">
-            <div className="logo-icon"><span>△</span></div>
-            DELTA FORCE CODES
+            <img src="/logo.png" alt="logo" className="logo-img" onError={e => { e.target.style.display = 'none'; }} />
+            有力气的改枪码
           </Link>
           <nav className="nav-links">
             <Link
