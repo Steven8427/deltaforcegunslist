@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import Landing from './pages/Landing';
 import Home from './pages/Home';
 import Admin from './pages/Admin';
 
 function App() {
   const location = useLocation();
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // 判断是否在作者页面
+  const isAuthorPage = location.pathname.startsWith('/author/');
 
   return (
     <>
@@ -30,16 +34,10 @@ function App() {
             有力气的改枪码
           </Link>
           <nav className="nav-links">
-            <Link
-              to="/"
-              className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
-            >
-              🔫 枪械库
+            <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>
+              🏠 首页
             </Link>
-            <Link
-              to="/admin"
-              className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`}
-            >
+            <Link to="/admin" className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`}>
               ⚙️ 管理
             </Link>
           </nav>
@@ -48,11 +46,9 @@ function App() {
 
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route
-            path="/admin"
-            element={<Admin isAdmin={isAdmin} setIsAdmin={setIsAdmin} />}
-          />
+          <Route path="/" element={<Landing />} />
+          <Route path="/author/:slug" element={<Home />} />
+          <Route path="/admin" element={<Admin isAdmin={isAdmin} setIsAdmin={setIsAdmin} />} />
         </Routes>
       </main>
     </>

@@ -93,3 +93,27 @@ body {
   .main-content { padding:16px 10px; }
   .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 }
+.author-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.25s;
+  cursor: pointer;
+}
+
+.author-card:hover {
+  border-color: var(--accent);
+  background: rgba(30, 204, 96, 0.03);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(30, 204, 96, 0.08);
+}
+
+.author-stat {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}

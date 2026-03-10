@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
 
@@ -7,6 +8,8 @@ const CAT_ICON = {"突击步枪":"🔫","战斗步枪":"⚔️","射手步枪":"
 const CAT_COLOR = {"突击步枪":"#30d060","战斗步枪":"#e0a030","射手步枪":"#50b0e0","冲锋枪":"#d050d0","机枪":"#e06030","狙击步枪":"#4090f0","连狙":"#60c0c0","霰弹枪":"#d04040","手枪":"#a0a0a0","弓弩":"#90d040"};
 
 function Home() {
+  const { slug } = useParams();
+  const [author, setAuthor] = useState(null);
   const [guns, setGuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -14,17 +17,28 @@ function Home() {
   const [filterVer, setFilterVer] = useState('全部');
   const [sortBy, setSortBy] = useState('default');
 
-  useEffect(() => { fetchGuns(); }, []);
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      // 先查作者
+      const { data: authorData } = await supabase.from('authors').select('*').eq('slug', slug).single();
+      if (!authorData) { setLoading(false); return; }
+      setAuthor(authorData);
 
-  async function fetchGuns() {
-    setLoading(true);
-    const { data: gunsData } = await supabase.from('guns').select('*').order('sort_order', { ascending: true });
-    const { data: variantsData } = await supabase.from('gun_variants').select('*').order('sort_order', { ascending: true });
-    if (gunsData && variantsData) {
-      setGuns(gunsData.map(gun => ({ ...gun, variants: variantsData.filter(v => v.gun_id === gun.id) })));
+      // 查该作者的枪和改装码
+      const { data: gunsData } = await supabase.from('guns').select('*').eq('author_id', authorData.id).order('sort_order', { ascending: true });
+      const gunIds = (gunsData || []).map(g => g.id);
+      let variantsData = [];
+      if (gunIds.length > 0) {
+        const { data } = await supabase.from('gun_variants').select('*').in('gun_id', gunIds).order('sort_order', { ascending: true });
+        variantsData = data || [];
+      }
+
+      setGuns((gunsData || []).map(gun => ({ ...gun, variants: variantsData.filter(v => v.gun_id === gun.id) })));
+      setLoading(false);
     }
-    setLoading(false);
-  }
+    fetchData();
+  }, [slug]);
 
   const versions = useMemo(() => {
     const s = new Set();
@@ -62,14 +76,45 @@ function Home() {
 
   if (loading) return <div className="loading"><div className="spinner"></div>加载枪械数据中...</div>;
 
+  if (!author) {
+    return (
+      <div style={{ textAlign: 'center', padding: 60 }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>😵</div>
+        <h2 style={{ color: 'var(--text-secondary)', marginBottom: 12 }}>找不到这个作者</h2>
+        <Link to="/" className="btn btn-primary">← 返回首页</Link>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h1 className="page-title">有力气的改枪码</h1>
+      {/* 作者信息头 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: 13 }}>← 返回首页</Link>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
+        {author.avatar_url ? (
+          <img src={author.avatar_url} alt={author.name}
+            style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }} />
+        ) : (
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%', background: 'rgba(30,204,96,0.12)',
+            border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+          }}>
+            {author.name.charAt(0)}
+          </div>
+        )}
+        <div>
+          <h1 className="page-title" style={{ fontSize: 22, marginBottom: 2 }}>{author.name} 的改枪码</h1>
+          {author.description && <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>{author.description}</p>}
+        </div>
+      </div>
       <p className="page-subtitle">
         点击改枪码即可复制 · {guns.length} 把武器 · {guns.reduce((a, g) => a + g.variants.length, 0)} 个配置
       </p>
 
-      {/* Category Filter */}
+      {/* 分类筛选 */}
       <div className="filter-bar">
         {CATS.map(c => (
           <button key={c} className={`filter-chip ${filterCat === c ? 'active' : ''}`} onClick={() => setFilterCat(c)}>
@@ -78,7 +123,7 @@ function Home() {
         ))}
       </div>
 
-      {/* Search + Version + Sort */}
+      {/* 搜索+段位+排序 */}
       <div className="search-row">
         <div className="search-bar">
           <span className="search-icon">🔍</span>
@@ -94,6 +139,7 @@ function Home() {
         </select>
       </div>
 
+      {/* 枪械列表 */}
       {filtered.length === 0 ? (
         <div className="loading" style={{ color: 'var(--text-muted)' }}>没有找到匹配的枪械</div>
       ) : (
@@ -110,16 +156,13 @@ function Home() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <span className="gun-name">{gun.name}</span>
-                    <span className="cat-badge" style={{
-                      background: `${catC}18`, color: catC, border: `1px solid ${catC}33`
-                    }}>
+                    <span className="cat-badge" style={{ background: `${catC}18`, color: catC, border: `1px solid ${catC}33` }}>
                       {CAT_ICON[gun.category] || ''} {gun.category}
                     </span>
                   </div>
                   <div className="gun-count">{gun.variants.length} 个配置方案</div>
                 </div>
               </div>
-
               <div className="table-scroll">
                 <table className="variants-table">
                   <thead>
