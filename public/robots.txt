@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://deltaforceguns.netlify.app/sitemap.xml
