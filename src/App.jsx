@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Landing from './pages/Landing';
-import Home from './pages/Home';
 import Admin from './pages/Admin';
-import ComingSoon from './pages/ComingSoon';
 import DailyPassword from './pages/DailyPassword';
 import Manufacturing from './pages/Manufacturing';
 import PriceTrend from './pages/PriceTrend';
 import MapTool from './pages/MapTool';
 import Loadout from './pages/Loadout';
+import OfficialCodes from './pages/OfficialCodes';
+import Streamers from './pages/Streamers';
+import Community from './pages/Community';
+import Legal from './pages/Legal';
 
 function App() {
   const location = useLocation();
@@ -19,8 +21,9 @@ function App() {
 
   const navItems = [
     { path: '/', icon: '🏠', label: '首页' },
-    { path: '/codes', icon: '🔫', label: '烽火地带改枪码' },
     { path: '/streamers', icon: '🎙️', label: '主播同款改枪码' },
+    { path: '/official', icon: '🔥', label: '官方热门改枪码' },
+    { path: '/community', icon: '🌐', label: '玩家社区' },
     { path: '/daily', icon: '🔑', label: '每日密码' },
     { path: '/profit', icon: '💰', label: '特勤处制造利润' },
     { path: '/prices', icon: '📈', label: '价格走势图' },
@@ -31,7 +34,6 @@ function App() {
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/';
-    if (path === '/codes') return location.pathname === '/codes' || location.pathname.startsWith('/author/');
     return location.pathname.startsWith(path);
   };
 
@@ -43,7 +45,7 @@ function App() {
         <div className="sidebar-header">
           <Link to="/" className="sidebar-logo" onClick={() => setSidebarOpen(false)}>
             <img src="/logo.png" alt="logo" className="sidebar-logo-img" onError={e => { e.target.style.display = 'none'; }} />
-            {!sidebarCollapsed && <span className="sidebar-logo-text">改枪码大全</span>}
+            {!sidebarCollapsed && <span className="sidebar-logo-text">有力气的改枪</span>}
           </Link>
         </div>
         <nav className="sidebar-nav">
@@ -68,24 +70,34 @@ function App() {
           </button>
           <Link to="/" className="topbar-logo">
             <img src="/logo.png" alt="" style={{ height: 26, width: 26, objectFit: 'contain', borderRadius: 4 }} onError={e => { e.target.style.display = 'none'; }} />
-            <span>有力气的改枪码</span>
+            <span>有力气的改枪网站</span>
           </Link>
           <div style={{ width: 36 }}></div>
         </header>
         <main className="main-content">
           <Routes>
             <Route path="/" element={<Landing />} />
-            <Route path="/codes" element={<Landing />} />
-            <Route path="/streamers" element={<Landing />} />
-            <Route path="/author/:slug" element={<Home />} />
+            <Route path="/streamers" element={<Streamers />} />
+            <Route path="/official" element={<OfficialCodes />} />
+            <Route path="/community" element={<Community />} />
             <Route path="/daily" element={<DailyPassword />} />
             <Route path="/profit" element={<Manufacturing />} />
             <Route path="/prices" element={<PriceTrend />} />
             <Route path="/cards" element={<Loadout />} />
             <Route path="/map" element={<MapTool />} />
             <Route path="/admin" element={<Admin isAdmin={isAdmin} setIsAdmin={setIsAdmin} />} />
+            <Route path="/legal" element={<Legal />} />
           </Routes>
         </main>
+        <footer style={{
+          borderTop: '1px solid var(--border)', padding: '16px 28px',
+          display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap',
+        }}>
+          <Link to="/legal?tab=privacy" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>隐私政策</Link>
+          <Link to="/legal?tab=terms" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>使用条款</Link>
+          <Link to="/legal?tab=cookie" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>Cookie 政策</Link>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>© 2026 YufanTechs</span>
+        </footer>
       </div>
     </>
   );
