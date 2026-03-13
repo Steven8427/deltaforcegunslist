@@ -203,21 +203,19 @@ function Admin({ isAdmin, setIsAdmin }) {
 
   // 社区管理
   async function deletePlayer(pid, name) {
-    if (!window.confirm(`删除玩家 ${name}？其所有枪械和改枪码都会被删除！`)) return;
-    // 删除该玩家的所有 gun_variants
-    const { data: pGuns } = await supabase.from('guns').select('id').eq('player_id', pid);
-    if (pGuns?.length) { for (const g of pGuns) { await supabase.from('gun_variants').delete().eq('gun_id', g.id); } await supabase.from('guns').delete().eq('player_id', pid); }
-    // 删除 community_codes
-    await supabase.from('community_codes').delete().eq('player_id', pid);
-    // 删除玩家
-    await supabase.from('players').delete().eq('id', pid);
-    toast.success(`${name} 已删除`); fetchCommunity();
+    const st = communityGunStats[pid] || { guns: 0, variants: 0 };
+    if (!window.confirm(`⚠️ 确定要删除玩家「${name}」吗？\n\n将同时删除：\n• ${st.guns} 把枪械\n• ${st.variants} 个改枪码\n\n此操作不可撤销！`)) return;
+    if (!window.confirm(`再次确认：删除「${name}」及其全部数据？`)) return;
+    const { error } = await supabase.from('players').delete().eq('id', pid);
+    if (error) { toast.error('删除失败：' + error.message); return; }
+    toast.success(`✅ 玩家「${name}」及 ${st.guns} 把枪械、${st.variants} 个配置已删除`); fetchCommunity();
   }
   async function deletePlayerGuns(pid, name) {
-    if (!window.confirm(`清空 ${name} 的所有枪械和改枪码？`)) return;
-    const { data: pGuns } = await supabase.from('guns').select('id').eq('player_id', pid);
-    if (pGuns?.length) { for (const g of pGuns) { await supabase.from('gun_variants').delete().eq('gun_id', g.id); } await supabase.from('guns').delete().eq('player_id', pid); }
-    toast.success('已清空'); fetchCommunity();
+    const st = communityGunStats[pid] || { guns: 0, variants: 0 };
+    if (!window.confirm(`⚠️ 确定要清空「${name}」的所有枪械？\n\n将删除：\n• ${st.guns} 把枪械\n• ${st.variants} 个改枪码\n\n账号保留，只清空枪械数据。此操作不可撤销！`)) return;
+    const { error } = await supabase.from('guns').delete().eq('player_id', pid);
+    if (error) { toast.error('清空失败：' + error.message); return; }
+    toast.success(`✅ 已清空「${name}」的 ${st.guns} 把枪械和 ${st.variants} 个配置`); fetchCommunity();
   }
 
   // 改装码表格
