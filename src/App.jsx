@@ -8,6 +8,8 @@ import ComingSoon from './pages/ComingSoon';
 import DailyPassword from './pages/DailyPassword';
 import Manufacturing from './pages/Manufacturing';
 import PriceTrend from './pages/PriceTrend';
+import MapTool from './pages/MapTool';
+import Loadout from './pages/Loadout';
 
 function App() {
   const location = useLocation();
@@ -22,8 +24,8 @@ function App() {
     { path: '/daily', icon: '🔑', label: '每日密码' },
     { path: '/profit', icon: '💰', label: '特勤处制造利润' },
     { path: '/prices', icon: '📈', label: '价格走势图' },
-    { path: '/map', icon: '🗺️', label: '官方地图工具' },
     { path: '/cards', icon: '🃏', label: '卡战备系统' },
+    { path: '/map', icon: '🗺️', label: '官方地图工具' },
     { path: '/admin', icon: '⚙️', label: '管理后台' },
   ];
 
@@ -79,8 +81,8 @@ function App() {
             <Route path="/daily" element={<DailyPassword />} />
             <Route path="/profit" element={<Manufacturing />} />
             <Route path="/prices" element={<PriceTrend />} />
-            <Route path="/map" element={<ComingSoon title="官方地图工具" icon="🗺️" />} />
-            <Route path="/cards" element={<ComingSoon title="卡战备系统" icon="🃏" />} />
+            <Route path="/cards" element={<Loadout />} />
+            <Route path="/map" element={<MapTool />} />
             <Route path="/admin" element={<Admin isAdmin={isAdmin} setIsAdmin={setIsAdmin} />} />
           </Routes>
         </main>

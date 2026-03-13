@@ -11,13 +11,21 @@ const PW_MAPS = [
   { id: 5, name: '潮汐监狱', icon: '⛓️', color: '#e06040' },
 ];
 
+// 枪械名称到分类的映射
+const CLASS_TO_CAT = {
+  gunRifle: '突击步枪', gunSmg: '冲锋枪', gunShotgun: '霰弹枪',
+  gunSniper: '狙击步枪', gunMarksman: '射手步枪', gunLmg: '机枪',
+  gunPistol: '手枪', gunBow: '弓弩',
+};
+
 function Admin({ isAdmin, setIsAdmin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [tab, setTab] = useState('authors');
+  const [tab, setTab] = useState('guns');
+  const [adminInfo, setAdminInfo] = useState(null);
   const [authors, setAuthors] = useState([]);
   const [guns, setGuns] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [allAdmins, setAllAdmins] = useState([]);
 
   const [newAuthor, setNewAuthor] = useState({ name: '', slug: '', description: '' });
   const [newAuthorAvatar, setNewAuthorAvatar] = useState(null);
@@ -26,6 +34,7 @@ function Admin({ isAdmin, setIsAdmin }) {
   const [newGunName, setNewGunName] = useState('');
   const [newGunCategory, setNewGunCategory] = useState('突击步枪');
   const [newGunImage, setNewGunImage] = useState(null);
+  const [newGunImageUrl, setNewGunImageUrl] = useState(''); // 从目录自动获取的图片
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedGunId, setSelectedGunId] = useState('');
   const [variantForm, setVariantForm] = useState({ version: 'T0', price: '', mod_type: '', code: '', effective_range: '' });
@@ -33,52 +42,66 @@ function Admin({ isAdmin, setIsAdmin }) {
   const [pwInputs, setPwInputs] = useState({});
   const [currentPw, setCurrentPw] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [mfgItems, setMfgItems] = useState([]);
   const [mfgRefreshing, setMfgRefreshing] = useState(false);
   const [priceRefreshing, setPriceRefreshing] = useState(false);
-  const [priceCount, setPriceCount] = useState(0);
+  const [loadoutRefreshing, setLoadoutRefreshing] = useState(false);
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false);
+  const [newAdmin, setNewAdmin] = useState({ username: '', password: '', role: 'admin', author_id: '', display_name: '' });
+
+  // 枪械目录搜索
+  const [catalogResults, setCatalogResults] = useState([]);
+  const [showCatalog, setShowCatalog] = useState(false);
+
+  const isSuper = adminInfo?.role === 'super';
 
   const fetchAll = useCallback(async () => {
-    setLoading(true);
     const { data: a } = await supabase.from('authors').select('*').order('sort_order');
     const { data: g } = await supabase.from('guns').select('*').order('sort_order');
     const { data: v } = await supabase.from('gun_variants').select('*').order('sort_order');
     if (a) setAuthors(a);
     if (g && v) setGuns(g.map(gun => ({ ...gun, variants: (v || []).filter(x => x.gun_id === gun.id) })));
-    if (a?.length && !selectedAuthorId) setSelectedAuthorId(a[0].id);
-    setLoading(false);
-  }, [selectedAuthorId]);
+    if (adminInfo?.role === 'admin' && adminInfo?.author_id && a) setSelectedAuthorId(adminInfo.author_id);
+    else if (a?.length && !selectedAuthorId) setSelectedAuthorId(a[0].id);
+  }, [adminInfo, selectedAuthorId]);
 
   const fetchPasswords = useCallback(async () => {
     const today = new Date().toISOString().split('T')[0];
     let { data } = await supabase.from('daily_passwords').select('*').eq('date', today).order('map_id');
-    if (!data || data.length === 0) {
-      const { data: latest } = await supabase.from('daily_passwords').select('*').order('date', { ascending: false }).order('map_id').limit(10);
-      data = latest || [];
-    }
-    setCurrentPw(data);
-    const inputs = {};
-    data.forEach(p => { inputs[p.map_id] = p.secret; });
-    setPwInputs(inputs);
+    if (!data?.length) { const { data: l } = await supabase.from('daily_passwords').select('*').order('date', { ascending: false }).order('map_id').limit(10); data = l || []; }
+    setCurrentPw(data); const inputs = {}; data.forEach(p => { inputs[p.map_id] = p.secret; }); setPwInputs(inputs);
   }, []);
 
-  const fetchMfg = useCallback(async () => {
-    const { data } = await supabase.from('manufacturing_items').select('*').order('profit_per_hour', { ascending: false });
-    setMfgItems(data || []);
-  }, []);
+  const fetchAdmins = useCallback(async () => { const { data } = await supabase.from('admins').select('*').order('created_at'); setAllAdmins(data || []); }, []);
 
-  const fetchPriceCount = useCallback(async () => {
-    const { count } = await supabase.from('price_history').select('*', { count: 'exact', head: true });
-    setPriceCount(count || 0);
-  }, []);
+  useEffect(() => { if (isAdmin) { fetchAll(); fetchPasswords(); if (isSuper) fetchAdmins(); } }, [isAdmin, fetchAll, fetchPasswords, fetchAdmins, isSuper]);
 
-  useEffect(() => { if (isAdmin) { fetchAll(); fetchPasswords(); fetchMfg(); fetchPriceCount(); } }, [isAdmin, fetchAll, fetchPasswords, fetchMfg, fetchPriceCount]);
+  // 枪械目录搜索
+  async function searchCatalog(query) {
+    setNewGunName(query);
+    if (query.length < 1) { setCatalogResults([]); setShowCatalog(false); return; }
+    const { data } = await supabase.from('gun_catalog').select('*').ilike('object_name', `%${query}%`).limit(10);
+    setCatalogResults(data || []);
+    setShowCatalog(true);
+  }
+
+  function selectFromCatalog(item) {
+    // 去掉后缀（如"突击步枪"、"冲锋枪"等）
+    let name = item.object_name;
+    const suffixes = ['突击步枪','射手步枪','狙击步枪','冲锋枪','轻机枪','通用机枪','霰弹枪','紧凑突击步枪','战斗步枪'];
+    for (const s of suffixes) { name = name.replace(s, '').trim(); }
+    setNewGunName(name);
+    setNewGunImageUrl(item.pic || '');
+    setNewGunCategory(CLASS_TO_CAT[item.second_class] || '突击步枪');
+    setShowCatalog(false);
+    toast.success(`已选择 ${name}，图片自动填充！`);
+  }
 
   async function handleLogin(e) {
     e.preventDefault();
     const { data, error } = await supabase.from('admins').select('*').eq('username', username).eq('password_hash', password).single();
     if (error || !data) { toast.error('用户名或密码错误'); return; }
-    setIsAdmin(true); toast.success('登录成功！');
+    setAdminInfo({ role: data.role || 'admin', author_id: data.author_id, display_name: data.display_name || data.username });
+    setIsAdmin(true); toast.success(`欢迎回来，${data.display_name || data.username}！`);
   }
 
   async function uploadImage(file) {
@@ -93,7 +116,7 @@ function Admin({ isAdmin, setIsAdmin }) {
   async function addAuthor() {
     if (!newAuthor.name.trim() || !newAuthor.slug.trim()) { toast.error('名称和slug必填'); return; }
     setUploadingImage(true); let avatarUrl = null;
-    try { if (newAuthorAvatar) avatarUrl = await uploadImage(newAuthorAvatar); } catch { toast.error('头像上传失败'); setUploadingImage(false); return; }
+    try { if (newAuthorAvatar) avatarUrl = await uploadImage(newAuthorAvatar); } catch { toast.error('头像失败'); setUploadingImage(false); return; }
     const mx = authors.reduce((m, a) => Math.max(m, a.sort_order || 0), 0);
     await supabase.from('authors').insert({ name: newAuthor.name.trim(), slug: newAuthor.slug.trim().toLowerCase(), description: newAuthor.description, avatar_url: avatarUrl, sort_order: mx + 1 });
     toast.success('添加成功！'); setNewAuthor({ name: '', slug: '', description: '' }); setNewAuthorAvatar(null); setUploadingImage(false); fetchAll();
@@ -106,7 +129,7 @@ function Admin({ isAdmin, setIsAdmin }) {
   }
   async function updateAuthorAvatar(id, file) { try { const url = await uploadImage(file); await supabase.from('authors').update({ avatar_url: url }).eq('id', id); toast.success('更新！'); fetchAll(); } catch { toast.error('失败'); } }
   async function saveAuthorEdit() {
-    if (!editingAuthor?.name?.trim() || !editingAuthor?.slug?.trim()) { toast.error('不能为空'); return; }
+    if (!editingAuthor?.name?.trim()) { toast.error('不能为空'); return; }
     await supabase.from('authors').update({ name: editingAuthor.name.trim(), slug: editingAuthor.slug.trim().toLowerCase(), description: editingAuthor.description || '' }).eq('id', editingAuthor.id);
     toast.success('已更新！'); setEditingAuthor(null); fetchAll();
   }
@@ -114,19 +137,20 @@ function Admin({ isAdmin, setIsAdmin }) {
   // ===== 枪械 =====
   const authorGuns = guns.filter(g => g.author_id === selectedAuthorId);
   const selectedGun = guns.find(g => g.id === selectedGunId);
+
   async function addGun() {
     if (!selectedAuthorId || !newGunName.trim()) { toast.error('填完整'); return; }
-    setUploadingImage(true); let imageUrl = null;
+    setUploadingImage(true);
+    let imageUrl = newGunImageUrl || null; // 优先用目录自动匹配的图片
     try { if (newGunImage) imageUrl = await uploadImage(newGunImage); } catch { toast.error('失败'); setUploadingImage(false); return; }
     const mx = guns.reduce((m, g) => Math.max(m, g.sort_order || 0), 0);
     await supabase.from('guns').insert({ name: newGunName.trim(), category: newGunCategory, image_url: imageUrl, author_id: selectedAuthorId, sort_order: mx + 1 });
-    toast.success('添加成功！'); setNewGunName(''); setNewGunImage(null); setUploadingImage(false); fetchAll();
+    toast.success('添加成功！'); setNewGunName(''); setNewGunImage(null); setNewGunImageUrl(''); setUploadingImage(false); fetchAll();
   }
   async function deleteGun(id, name) { if (!window.confirm(`删除 ${name}？`)) return; await supabase.from('guns').delete().eq('id', id); toast.success('已删除'); if (selectedGunId === id) setSelectedGunId(''); fetchAll(); }
   async function updateGunImage(id, file) { try { const url = await uploadImage(file); await supabase.from('guns').update({ image_url: url }).eq('id', id); toast.success('更新！'); fetchAll(); } catch { toast.error('失败'); } }
   async function updateGunCategory(id, cat) { await supabase.from('guns').update({ category: cat }).eq('id', id); fetchAll(); }
 
-  // ===== 改装码 =====
   async function addVariant() {
     if (!selectedGunId || !variantForm.code.trim() || !variantForm.mod_type.trim()) { toast.error('填完整'); return; }
     const gun = guns.find(g => g.id === selectedGunId);
@@ -141,36 +165,35 @@ function Admin({ isAdmin, setIsAdmin }) {
     toast.success('更新成功！'); setEditingVariant(null); fetchAll();
   }
 
-  // ===== 每日密码 =====
-  async function autoFetchPw() {
-    setRefreshing(true);
-    try { const r = await (await fetch('https://iugcmnqglxrcmdodugqk.supabase.co/functions/v1/fetch-passwords', { method: 'POST' })).json(); if (r.success) { toast.success(`获取成功！${r.count}个密码`); await fetchPasswords(); } else toast.error('失败'); } catch { toast.error('请求失败'); }
-    setRefreshing(false);
-  }
+  // ===== 密码 =====
+  async function autoFetchPw() { setRefreshing(true); try { const r = await (await fetch('https://iugcmnqglxrcmdodugqk.supabase.co/functions/v1/fetch-passwords', { method: 'POST' })).json(); if (r.success) { toast.success(`获取成功！`); await fetchPasswords(); } else toast.error('失败'); } catch { toast.error('请求失败'); } setRefreshing(false); }
   async function manualSavePw() {
     const entries = Object.entries(pwInputs).filter(([_, v]) => v && v.trim());
     if (!entries.length) { toast.error('至少输入一个'); return; }
-    const today = new Date().toISOString().split('T')[0]; let count = 0;
-    for (const [id, secret] of entries) { const map = PW_MAPS.find(m => m.id === parseInt(id)); if (!map) continue; const { error } = await supabase.from('daily_passwords').upsert({ map_id: parseInt(id), map_name: map.name, secret: secret.trim(), date: today, updated_at: new Date().toISOString() }, { onConflict: 'map_id,date' }); if (!error) count++; }
-    toast.success(`更新 ${count} 个密码！`); await fetchPasswords();
+    const today = new Date().toISOString().split('T')[0]; let c = 0;
+    for (const [id, secret] of entries) { const map = PW_MAPS.find(m => m.id === parseInt(id)); if (!map) continue; const { error } = await supabase.from('daily_passwords').upsert({ map_id: parseInt(id), map_name: map.name, secret: secret.trim(), date: today, updated_at: new Date().toISOString() }, { onConflict: 'map_id,date' }); if (!error) c++; }
+    toast.success(`更新 ${c} 个密码！`); await fetchPasswords();
   }
 
-  // ===== 制造利润 =====
-  async function autoFetchMfg() {
-    setMfgRefreshing(true);
-    try { const r = await (await fetch('https://iugcmnqglxrcmdodugqk.supabase.co/functions/v1/fetch-manufacturing', { method: 'POST' })).json(); if (r.success) { toast.success(`获取成功！${r.count}个方案`); await fetchMfg(); } else toast.error('失败'); } catch { toast.error('请求失败'); }
-    setMfgRefreshing(false);
+  // ===== 数据刷新 =====
+  const sf = 'https://iugcmnqglxrcmdodugqk.supabase.co/functions/v1/';
+  async function refreshData(name, setLoading) { setLoading(true); try { const r = await (await fetch(sf + name)).json(); if (r.success) toast.success(`${name} 更新成功！`); else toast.error('失败'); } catch { toast.error('请求失败'); } setLoading(false); }
+
+  // ===== 管理员 =====
+  async function addNewAdmin() {
+    if (!newAdmin.username.trim() || !newAdmin.password.trim()) { toast.error('用户名和密码必填'); return; }
+    if (newAdmin.role === 'admin' && !newAdmin.author_id) { toast.error('普通管理员必须关联作者'); return; }
+    const { error } = await supabase.from('admins').insert({
+      username: newAdmin.username.trim(), password_hash: newAdmin.password,
+      role: newAdmin.role, author_id: newAdmin.role === 'admin' ? newAdmin.author_id : null,
+      display_name: newAdmin.display_name.trim() || newAdmin.username.trim(),
+    });
+    if (error) { toast.error('失败：' + error.message); return; }
+    toast.success('管理员添加成功！'); setNewAdmin({ username: '', password: '', role: 'admin', author_id: '', display_name: '' }); fetchAdmins();
   }
+  async function deleteAdmin(id, name) { if (!window.confirm(`删除 ${name}？`)) return; await supabase.from('admins').delete().eq('id', id); toast.success('已删除'); fetchAdmins(); }
 
-  // ===== 价格 =====
-  async function autoFetchPrices() {
-    setPriceRefreshing(true);
-    try { const r = await (await fetch('https://iugcmnqglxrcmdodugqk.supabase.co/functions/v1/fetch-prices')).json(); if (r.success) { toast.success(`获取成功！${r.count}个物品价格`); await fetchPriceCount(); } else toast.error('失败：' + (r.message || '')); } catch { toast.error('请求失败'); }
-    setPriceRefreshing(false);
-  }
-
-  function formatPrice(n) { if (!n && n !== 0) return '-'; if (n >= 10000) return (n / 10000).toFixed(1) + 'w'; return n.toLocaleString(); }
-
+  // ===== 未登录 =====
   if (!isAdmin) {
     return (
       <div className="admin-login">
@@ -185,22 +208,28 @@ function Admin({ isAdmin, setIsAdmin }) {
   }
 
   const selAuthor = authors.find(a => a.id === selectedAuthorId);
+  const tabs = isSuper
+    ? [['authors','👤 作者'],['guns','🔫 枪械'],['passwords','🔑 密码'],['data','📊 数据刷新'],['admins','🔒 管理员']]
+    : [['guns','🔫 枪械管理']];
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 className="page-title">管理后台</h1>
-        <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); toast.success('已退出'); }}>退出</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h1 className="page-title">管理后台</h1>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {adminInfo?.display_name} · {isSuper ? '🔴 超级管理员' : '🟢 普通管理员'}
+          </p>
+        </div>
+        <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); setAdminInfo(null); toast.success('已退出'); }}>退出</button>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {[['authors','👤 作者'],['guns','🔫 枪械'],['passwords','🔑 密码'],['manufacturing','💰 制造'],['prices','📈 价格']].map(([k,l]) => (
-          <button key={k} className={`filter-chip ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>
-        ))}
+        {tabs.map(([k, l]) => (<button key={k} className={`filter-chip ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>))}
       </div>
 
       {/* ===== 作者 ===== */}
-      {tab === 'authors' && (<>
+      {tab === 'authors' && isSuper && (<>
         <div className="admin-section">
           <h3>➕ 添加作者</h3>
           <div className="form-row">
@@ -244,17 +273,60 @@ function Admin({ isAdmin, setIsAdmin }) {
 
       {/* ===== 枪械 ===== */}
       {tab === 'guns' && (<>
-        <div className="admin-section">
-          <h3>👤 选择作者</h3>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{authors.map(a=>(<button key={a.id} className={`filter-chip ${selectedAuthorId===a.id?'active':''}`} onClick={()=>{setSelectedAuthorId(a.id);setSelectedGunId('')}}>{a.name} ({guns.filter(g=>g.author_id===a.id).length})</button>))}</div>
-        </div>
+        {isSuper && (
+          <div className="admin-section">
+            <h3>👤 选择作者</h3>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{authors.map(a=>(<button key={a.id} className={`filter-chip ${selectedAuthorId===a.id?'active':''}`} onClick={()=>{setSelectedAuthorId(a.id);setSelectedGunId('')}}>{a.name} ({guns.filter(g=>g.author_id===a.id).length})</button>))}</div>
+          </div>
+        )}
         {selAuthor && (<>
           <div className="admin-section">
             <h3>➕ 给「{selAuthor.name}」添加枪械</h3>
             <div className="form-row">
-              <div className="form-group"><label>名称</label><input type="text" value={newGunName} onChange={e=>setNewGunName(e.target.value)} placeholder="AK-47"/></div>
+              <div className="form-group" style={{ position: 'relative' }}>
+                <label>枪械名称（输入搜索自动匹配图片）</label>
+                <input type="text" value={newGunName} onChange={e => searchCatalog(e.target.value)} placeholder="输入枪名搜索..." onFocus={() => { if (catalogResults.length) setShowCatalog(true); }} />
+                {/* 搜索结果下拉 */}
+                {showCatalog && catalogResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                    background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 8,
+                    maxHeight: 250, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                  }}>
+                    {catalogResults.map(item => (
+                      <div key={item.object_id} onClick={() => selectFromCatalog(item)} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                        cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                        transition: 'background 0.1s',
+                      }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(32,232,112,0.06)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        {item.pic && <img src={item.pic} alt="" style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 6, background: 'linear-gradient(135deg,#1a2a3a,#1e3040)', padding: 2 }} />}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{item.object_name}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{item.second_class_cn}</div>
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--accent)' }}>选择</span>
+                      </div>
+                    ))}
+                    <div onClick={() => setShowCatalog(false)} style={{ padding: '8px 12px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer' }}>关闭</div>
+                  </div>
+                )}
+              </div>
               <div className="form-group"><label>分类</label><select value={newGunCategory} onChange={e=>setNewGunCategory(e.target.value)}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
-              <div className="form-group"><label>图片</label><input type="file" accept="image/*" onChange={e=>setNewGunImage(e.target.files[0]||null)} style={{padding:'7px 10px'}}/></div>
+              <div className="form-group">
+                <label>图片 {newGunImageUrl ? '✅ 已自动匹配' : '（手动上传）'}</label>
+                {newGunImageUrl ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <img src={newGunImageUrl} alt="" style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 6, background: 'linear-gradient(135deg,#1a2a3a,#1e3040)', border: '1px solid var(--accent)', padding: 2 }} />
+                    <span style={{ fontSize: 12, color: 'var(--accent)' }}>自动匹配</span>
+                    <button onClick={() => setNewGunImageUrl('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>✕ 清除</button>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/*" onChange={e=>setNewGunImage(e.target.files[0]||null)} style={{padding:'7px 10px'}}/>
+                )}
+              </div>
             </div>
             <button className="btn btn-primary" onClick={addGun} disabled={uploadingImage}>{uploadingImage?'上传中...':'添加'}</button>
           </div>
@@ -314,11 +386,10 @@ function Admin({ isAdmin, setIsAdmin }) {
         </>)}
       </>)}
 
-      {/* ===== 每日密码 ===== */}
-      {tab === 'passwords' && (<>
+      {/* ===== 密码 ===== */}
+      {tab === 'passwords' && isSuper && (<>
         <div className="admin-section">
           <h3>🔄 自动获取</h3>
-          <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:12}}>每天00:05自动执行。</p>
           <button className="btn btn-primary" onClick={autoFetchPw} disabled={refreshing}>{refreshing?'获取中...':'🔄 立即获取'}</button>
         </div>
         <div className="admin-section">
@@ -331,50 +402,71 @@ function Admin({ isAdmin, setIsAdmin }) {
           </div>
           <button className="btn btn-primary" onClick={manualSavePw}>保存</button>
         </div>
+      </>)}
+
+      {/* ===== 数据刷新 ===== */}
+      {tab === 'data' && isSuper && (
         <div className="admin-section">
-          <h3>📋 当前密码</h3>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
-            {currentPw.map(pw=>{const map=PW_MAPS.find(m=>m.name===pw.map_name)||{icon:'🗺️',color:'#20e870'};return(<div key={pw.id} style={{background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:10,padding:14,textAlign:'center'}}><div style={{fontSize:20,marginBottom:4}}>{map.icon}</div><div style={{fontSize:12,color:'var(--text-muted)',marginBottom:6}}>{pw.map_name}</div><div style={{fontFamily:"'Orbitron',monospace",fontSize:24,fontWeight:900,color:map.color,letterSpacing:4}}>{pw.secret}</div></div>);})}
+          <h3>📊 数据刷新</h3>
+          <div style={{display:'grid',gap:10}}>
+            {[
+              { name: 'fetch-manufacturing', label: '💰 制造利润', desc: '每小时自动', state: mfgRefreshing, set: setMfgRefreshing },
+              { name: 'fetch-prices', label: '📈 物品价格', desc: '每4小时自动', state: priceRefreshing, set: setPriceRefreshing },
+              { name: 'fetch-loadouts', label: '🃏 卡战备', desc: '每小时自动', state: loadoutRefreshing, set: setLoadoutRefreshing },
+              { name: 'fetch-gun-catalog', label: '🔫 枪械目录', desc: '手动刷新', state: catalogRefreshing, set: setCatalogRefreshing },
+            ].map(item => (
+              <div key={item.name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:14,background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:10}}>
+                <div><div style={{fontWeight:600}}>{item.label}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{item.desc}</div></div>
+                <button className="btn btn-primary btn-small" onClick={() => refreshData(item.name, item.set)} disabled={item.state}>{item.state?'获取中...':'刷新'}</button>
+              </div>
+            ))}
           </div>
         </div>
-      </>)}
+      )}
 
-      {/* ===== 制造利润 ===== */}
-      {tab === 'manufacturing' && (<>
+      {/* ===== 管理员 ===== */}
+      {tab === 'admins' && isSuper && (<>
         <div className="admin-section">
-          <h3>🔄 获取制造数据</h3>
-          <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:12}}>从腾讯API获取特勤处制造利润推荐。</p>
-          <button className="btn btn-primary" onClick={autoFetchMfg} disabled={mfgRefreshing}>{mfgRefreshing?'获取中...':'🔄 立即获取'}</button>
-        </div>
-        <div className="admin-section">
-          <h3>📋 制造数据 ({mfgItems.length})</h3>
-          {mfgItems.length===0?<p style={{color:'var(--text-muted)',fontSize:13}}>暂无数据</p>:(
-            <div style={{display:'grid',gap:6}}>{mfgItems.slice(0,20).map(item=>(
-              <div key={item.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:8,gap:8}}>
-                <div style={{fontSize:13,fontWeight:600}}>{item.item_name}{item.per_count>1&&` ×${item.per_count}`}</div>
-                <div style={{display:'flex',gap:10,alignItems:'center'}}>
-                  <span style={{fontSize:12,color:'var(--text-muted)'}}>{item.place_name}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:item.profit>0?'#20e870':'#e04848'}}>{item.profit>0?'+':''}{formatPrice(item.profit)}</span>
-                </div>
-              </div>
-            ))}</div>
+          <h3>➕ 添加管理员</h3>
+          <div className="form-row">
+            <div className="form-group"><label>用户名</label><input type="text" value={newAdmin.username} onChange={e => setNewAdmin({...newAdmin,username:e.target.value})} placeholder="zhangsan" /></div>
+            <div className="form-group"><label>密码</label><input type="text" value={newAdmin.password} onChange={e => setNewAdmin({...newAdmin,password:e.target.value})} placeholder="密码" /></div>
+            <div className="form-group"><label>显示名</label><input type="text" value={newAdmin.display_name} onChange={e => setNewAdmin({...newAdmin,display_name:e.target.value})} placeholder="张三" /></div>
+            <div className="form-group"><label>角色</label>
+              <select value={newAdmin.role} onChange={e => setNewAdmin({...newAdmin,role:e.target.value})}>
+                <option value="admin">普通管理员（只管自己的枪）</option>
+                <option value="super">超级管理员（管理所有）</option>
+              </select>
+            </div>
+          </div>
+          {newAdmin.role === 'admin' && (
+            <div className="form-group" style={{marginBottom:12}}>
+              <label>关联作者</label>
+              <select value={newAdmin.author_id} onChange={e => setNewAdmin({...newAdmin,author_id:e.target.value})}>
+                <option value="">-- 选择作者 --</option>
+                {authors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
           )}
-          {mfgItems.length>20&&<p style={{fontSize:12,color:'var(--text-muted)',marginTop:8}}>仅显示前20条，共{mfgItems.length}条</p>}
+          <button className="btn btn-primary" onClick={addNewAdmin}>添加管理员</button>
         </div>
-      </>)}
-
-      {/* ===== 价格 ===== */}
-      {tab === 'prices' && (<>
         <div className="admin-section">
-          <h3>📈 价格数据管理</h3>
-          <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:12}}>
-            从腾讯API获取所有物品的当前均价，每天自动记录。积累多天数据后即可展示走势图。
-            <br/>当前已记录 <strong style={{color:'var(--accent)'}}>{priceCount}</strong> 条价格数据。
-            系统每天00:10自动获取。
-          </p>
-          <button className="btn btn-primary" onClick={autoFetchPrices} disabled={priceRefreshing}>
-            {priceRefreshing?'获取中...':'📈 立即获取今日价格'}
-          </button>
+          <h3>📋 管理员列表 ({allAdmins.length})</h3>
+          {allAdmins.map(a => {
+            const la = authors.find(au => au.id === a.author_id);
+            return (
+              <div key={a.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:12,background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:8,marginBottom:6,flexWrap:'wrap',gap:8}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,background:a.role==='super'?'rgba(224,72,72,0.1)':'rgba(32,232,112,0.1)',border:`2px solid ${a.role==='super'?'#e04848':'#20e870'}`,color:a.role==='super'?'#e04848':'#20e870'}}>{a.role==='super'?'👑':'👤'}</div>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:14}}>{a.display_name||a.username}</div>
+                    <div style={{fontSize:11,color:'var(--text-muted)'}}>@{a.username} · {a.role==='super'?'🔴 超管':'🟢 普通'}{la&&` · ${la.name}`}</div>
+                  </div>
+                </div>
+                {a.username !== 'admin' && <button className="btn btn-danger btn-small" onClick={()=>deleteAdmin(a.id,a.display_name||a.username)}>删除</button>}
+              </div>
+            );
+          })}
         </div>
       </>)}
     </div>
