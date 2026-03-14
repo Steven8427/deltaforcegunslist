@@ -28,6 +28,12 @@ function Admin({ isAdmin, setIsAdmin }) {
   const [reviews, setReviews] = useState([]);
   const [communityPlayers, setCommunityPlayers] = useState([]);
   const [communityGunStats, setCommunityGunStats] = useState({});
+  const [pendingCodes, setPendingCodes] = useState([]);
+  const [officialCodes, setOfficialCodes] = useState([]);
+  const [streamerSearch, setStreamerSearch] = useState('');
+  const [pendingProfiles, setPendingProfiles] = useState([]);
+  const [bannedWordsList, setBannedWordsList] = useState([]);
+  const [newBannedWord, setNewBannedWord] = useState('');
 
   const [newAuthor, setNewAuthor] = useState({ name: '', slug: '', description: '' });
   const [newAuthorAvatar, setNewAuthorAvatar] = useState(null);
@@ -59,6 +65,19 @@ function Admin({ isAdmin, setIsAdmin }) {
   const [newAdmin, setNewAdmin] = useState({ username: '', password: '', role: 'admin', author_id: '', display_name: '' });
 
   const isSuper = adminInfo?.role === 'super';
+
+  // Restore admin session from localStorage (3 hour expiry)
+  useEffect(() => {
+    const saved = localStorage.getItem('df_admin');
+    if (saved) {
+      try {
+        const d = JSON.parse(saved);
+        if (Date.now() - d.loginAt < 3 * 3600000) {
+          setAdminInfo(d); setIsAdmin(true);
+        } else { localStorage.removeItem('df_admin'); }
+      } catch { localStorage.removeItem('df_admin'); }
+    }
+  }, [setIsAdmin]);
 
   const fetchAll = useCallback(async () => {
     const { data: a } = await supabase.from('authors').select('*').order('sort_order');
@@ -95,7 +114,31 @@ function Admin({ isAdmin, setIsAdmin }) {
     setCommunityGunStats(st);
   }, []);
 
-  useEffect(() => { if (isAdmin) { fetchAll(); fetchPasswords(); if (isSuper) { fetchAdmins(); fetchReviews(); fetchCommunity(); } } }, [isAdmin, fetchAll, fetchPasswords, fetchAdmins, fetchReviews, fetchCommunity, isSuper]);
+  const fetchPendingCodes = useCallback(async () => {
+    const { data } = await supabase.from('gun_variants').select('*, guns!inner(name, image_url, player_id)').eq('status', 'pending').order('created_at', { ascending: false });
+    // Get player info for each
+    const pids = [...new Set((data||[]).map(v => v.guns?.player_id).filter(Boolean))];
+    let pm = {};
+    if (pids.length) { const { data: ps } = await supabase.from('players').select('id, username, nickname').in('id', pids); (ps||[]).forEach(p => { pm[p.id] = p; }); }
+    setPendingCodes((data||[]).map(v => ({ ...v, _gunName: v.guns?.name, _gunImage: v.guns?.image_url, _player: pm[v.guns?.player_id] })));
+  }, []);
+
+  const fetchOfficialCodes = useCallback(async () => {
+    const { data } = await supabase.from('official_gun_codes').select('*').order('sort_order');
+    setOfficialCodes(data || []);
+  }, []);
+
+  const fetchPendingProfiles = useCallback(async () => {
+    const { data } = await supabase.from('players').select('*').eq('profile_status', 'pending').order('created_at');
+    setPendingProfiles(data || []);
+  }, []);
+
+  const fetchBannedWords = useCallback(async () => {
+    const { data } = await supabase.from('banned_words').select('*').order('category').order('word');
+    setBannedWordsList(data || []);
+  }, []);
+
+  useEffect(() => { if (isAdmin) { fetchAll(); fetchPasswords(); if (isSuper) { fetchAdmins(); fetchReviews(); fetchCommunity(); fetchPendingCodes(); fetchOfficialCodes(); fetchPendingProfiles(); fetchBannedWords(); } } }, [isAdmin, fetchAll, fetchPasswords, fetchAdmins, fetchReviews, fetchCommunity, fetchPendingCodes, fetchOfficialCodes, fetchPendingProfiles, fetchBannedWords, isSuper]);
 
   // 搜索枪械目录
   async function searchCatalog(query) {
@@ -134,7 +177,8 @@ function Admin({ isAdmin, setIsAdmin }) {
     e.preventDefault();
     const { data, error } = await supabase.from('admins').select('*').eq('username', username).eq('password_hash', password).single();
     if (error || !data) { toast.error('用户名或密码错误'); return; }
-    setAdminInfo({ id: data.id, role: data.role || 'admin', author_id: data.author_id, display_name: data.display_name || data.username });
+    const info = { id: data.id, role: data.role || 'admin', author_id: data.author_id, display_name: data.display_name || data.username, loginAt: Date.now() };
+    setAdminInfo(info); localStorage.setItem('df_admin', JSON.stringify(info));
     setIsAdmin(true); toast.success(`欢迎，${data.display_name || data.username}！`);
   }
 
@@ -218,6 +262,57 @@ function Admin({ isAdmin, setIsAdmin }) {
     toast.success(`✅ 已清空「${name}」的 ${st.guns} 把枪械和 ${st.variants} 个配置`); fetchCommunity();
   }
 
+  // 改枪码审核
+  async function approveCode(id) {
+    await supabase.from('gun_variants').update({ status: 'approved' }).eq('id', id);
+    toast.success('已通过！'); fetchPendingCodes(); fetchAll();
+  }
+  async function rejectCode(id) {
+    if (!window.confirm('拒绝并删除此改枪码？')) return;
+    await supabase.from('gun_variants').delete().eq('id', id);
+    toast.success('已拒绝并删除'); fetchPendingCodes();
+  }
+
+  // 主播改枪码管理
+  async function toggleCodeHidden(id, hidden) {
+    await supabase.from('official_gun_codes').update({ is_hidden: hidden }).eq('id', id);
+    toast.success(hidden ? '已下架' : '已上架'); fetchOfficialCodes();
+  }
+  async function deleteOfficialCode(id, name) {
+    if (!window.confirm(`删除「${name}」？`)) return;
+    await supabase.from('official_gun_codes').delete().eq('id', id);
+    toast.success('已删除'); fetchOfficialCodes();
+  }
+
+  // 玩家资料审核
+  async function approveProfile(pid) {
+    const p = pendingProfiles.find(x => x.id === pid);
+    if (!p) return;
+    const updates = { profile_status: 'approved' };
+    if (p.pending_nickname) updates.nickname = p.pending_nickname;
+    if (p.pending_description !== null) updates.description = p.pending_description;
+    if (p.pending_avatar_url) updates.avatar_url = p.pending_avatar_url;
+    updates.pending_nickname = null; updates.pending_description = null; updates.pending_avatar_url = null;
+    await supabase.from('players').update(updates).eq('id', pid);
+    toast.success('资料已通过！'); fetchPendingProfiles();
+  }
+  async function rejectProfile(pid) {
+    await supabase.from('players').update({ profile_status: 'approved', pending_nickname: null, pending_description: null, pending_avatar_url: null }).eq('id', pid);
+    toast.success('已拒绝'); fetchPendingProfiles();
+  }
+
+  // 敏感词管理
+  async function addBannedWord() {
+    if (!newBannedWord.trim()) return;
+    const { error } = await supabase.from('banned_words').insert({ word: newBannedWord.trim().toLowerCase(), category: 'custom' });
+    if (error) { toast.error(error.message.includes('duplicate') ? '词汇已存在' : '添加失败'); return; }
+    toast.success('已添加'); setNewBannedWord(''); fetchBannedWords();
+  }
+  async function deleteBannedWord(id) {
+    await supabase.from('banned_words').delete().eq('id', id);
+    toast.success('已删除'); fetchBannedWords();
+  }
+
   // 改装码表格
   function VariantTable({ gun }) {
     if (!gun) return null;
@@ -293,7 +388,7 @@ function Admin({ isAdmin, setIsAdmin }) {
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>🟢 管理员 · {authorGuns.length} 把枪 · {authorGuns.reduce((s,g) => s+g.variants.length, 0)} 个配置</div>
           </div>
         </div>
-        <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); setAdminInfo(null); }}>退出</button>
+        <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); setAdminInfo(null); localStorage.removeItem('df_admin'); }}>退出</button>
       </div>
 
       <div style={{ display: 'flex', gap: 6 }}>
@@ -380,14 +475,15 @@ function Admin({ isAdmin, setIsAdmin }) {
   );
 
   // ======================== 超级管理员 ========================
-  const tabs = [['authors','👤 作者'],['guns','🔫 枪械'],['passwords','🔑 密码'],['data','📊 数据'],['admins','🔒 管理员'],['community','🌐 社区']];
+  const pendingTotal = pendingCodes.length + pendingProfiles.length;
+  const tabs = [['authors','👤 作者'],['guns','🔫 枪械'],['passwords','🔑 密码'],['data','📊 数据'],['admins','🔒 管理员'],['community','🌐 社区'],['streamers','🎙️ 主播'],['codereview',`📋 审核${pendingTotal ? ` (${pendingTotal})` : ''}`],['words','🚫 敏感词']];
   if (reviews.length > 0) tabs.push(['reviews',`📝 审核 (${reviews.length})`]);
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div><h1 className="page-title">管理后台</h1><p style={{fontSize:12,color:'var(--text-muted)'}}>{adminInfo?.display_name} · 🔴 超级管理员</p></div>
-        <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); setAdminInfo(null); }}>退出</button>
+        <button className="btn btn-danger btn-small" onClick={() => { setIsAdmin(false); setAdminInfo(null); localStorage.removeItem('df_admin'); }}>退出</button>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -508,7 +604,7 @@ function Admin({ isAdmin, setIsAdmin }) {
         <div className="admin-section">
           <h3>📊 数据刷新</h3>
           <div style={{display:'grid',gap:10}}>
-            {[{n:'fetch-manufacturing',l:'💰 制造利润',d:'每小时'},{n:'fetch-prices',l:'📈 物品价格',d:'每4小时'},{n:'fetch-loadouts',l:'🃏 卡战备',d:'每小时'},{n:'fetch-gun-catalog',l:'🔫 枪械目录',d:'手动'},{n:'fetch-official-codes',l:'🔥 官方改枪码',d:'每6小时'}].map(i=>(
+            {[{n:'fetch-manufacturing',l:'💰 制造利润',d:'每小时'},{n:'fetch-prices',l:'📈 物品价格',d:'每4小时'},{n:'fetch-loadouts',l:'🃏 卡战备',d:'每小时'},{n:'fetch-gun-catalog',l:'🔫 枪械目录',d:'手动'},{n:'fetch-official-codes',l:'🔥 官方改枪码',d:'每6小时'},{n:'fetch-items',l:'📖 物品图鉴',d:'每日'}].map(i=>(
               <div key={i.n} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:14,background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:10}}>
                 <div><div style={{fontWeight:600}}>{i.l}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{i.d}</div></div>
                 <button className="btn btn-primary btn-small" onClick={()=>refreshData(i.n)} disabled={dataRefresh[i.n]}>{dataRefresh[i.n]?'获取中...':'刷新'}</button>
@@ -574,6 +670,139 @@ function Admin({ isAdmin, setIsAdmin }) {
               );
             })}
             {communityPlayers.length===0&&<p style={{color:'var(--text-muted)',fontSize:13,textAlign:'center',padding:20}}>暂无注册玩家</p>}
+          </div>
+        </div>
+      </>)}
+
+      {/* 改枪码审核 */}
+      {tab==='codereview'&&(<>
+        <div className="admin-section">
+          <h3>📋 待审核改枪码 ({pendingCodes.length})</h3>
+          {pendingCodes.length === 0 ? <p style={{color:'var(--text-muted)',fontSize:13,textAlign:'center',padding:20}}>没有待审核的改枪码</p> : (
+            <div style={{display:'grid',gap:8}}>
+              {pendingCodes.map(v => (
+                <div key={v.id} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',background:'var(--bg-secondary)',border:'1px solid rgba(224,160,48,0.2)',borderRadius:10,flexWrap:'wrap'}}>
+                  {v._gunImage && <img src={v._gunImage} alt="" style={{width:40,height:30,objectFit:'contain',borderRadius:6,background:'linear-gradient(135deg,#1a2a3a,#1e3040)',flexShrink:0}} />}
+                  <div style={{flex:1,minWidth:150}}>
+                    <div style={{fontWeight:600,fontSize:14}}>{v._gunName || '未知枪械'}</div>
+                    <div style={{fontSize:11,color:'var(--text-muted)'}}>
+                      提交者：{v._player?.nickname || v._player?.username || '未知'}
+                      {v.version && ` · ${v.version}`}{v.price && ` · ${v.price}`}{v.mod_type && ` · ${v.mod_type}`}
+                    </div>
+                    <div style={{fontFamily:'monospace',fontSize:11,color:'var(--accent)',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.code}</div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexShrink:0}}>
+                    <button className="btn btn-success btn-small" onClick={()=>approveCode(v.id)}>✅ 通过</button>
+                    <button className="btn btn-danger btn-small" onClick={()=>rejectCode(v.id)}>❌ 拒绝</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 待审核资料修改 */}
+        {pendingProfiles.length > 0 && (
+          <div className="admin-section">
+            <h3>👤 待审核资料修改 ({pendingProfiles.length})</h3>
+            <div style={{display:'grid',gap:8}}>
+              {pendingProfiles.map(p=>(
+                <div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',background:'var(--bg-secondary)',border:'1px solid rgba(224,160,48,0.2)',borderRadius:10,flexWrap:'wrap'}}>
+                  <div style={{display:'flex',gap:10,alignItems:'center',flex:1,minWidth:150}}>
+                    {/* 当前 → 新 */}
+                    <div style={{textAlign:'center'}}>
+                      {p.avatar_url ? <img src={p.avatar_url} alt="" style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',border:'2px solid var(--border)'}}/> : <div style={{width:36,height:36,borderRadius:'50%',background:'rgba(32,232,112,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>{(p.nickname||'?').charAt(0)}</div>}
+                      <div style={{fontSize:10,color:'var(--text-muted)'}}>当前</div>
+                    </div>
+                    <span style={{color:'var(--text-muted)'}}>→</span>
+                    <div style={{textAlign:'center'}}>
+                      {p.pending_avatar_url ? <img src={p.pending_avatar_url} alt="" style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',border:'2px solid var(--accent)'}}/> : <div style={{width:36,height:36,borderRadius:'50%',background:'rgba(32,232,112,0.12)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>{(p.pending_nickname||p.nickname||'?').charAt(0)}</div>}
+                      <div style={{fontSize:10,color:'var(--accent)'}}>新</div>
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:600}}>
+                        {p.nickname||p.username} {p.pending_nickname && p.pending_nickname !== p.nickname && <span style={{color:'var(--accent)'}}>→ {p.pending_nickname}</span>}
+                      </div>
+                      <div style={{fontSize:11,color:'var(--text-muted)'}}>@{p.username}</div>
+                      {p.pending_description && <div style={{fontSize:11,color:'var(--text-muted)'}}>新简介：{p.pending_description}</div>}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexShrink:0}}>
+                    <button className="btn btn-success btn-small" onClick={()=>approveProfile(p.id)}>✅ 通过</button>
+                    <button className="btn btn-danger btn-small" onClick={()=>rejectProfile(p.id)}>❌ 拒绝</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </>)}
+
+      {/* 敏感词管理 */}
+      {tab==='words'&&(<>
+        <div className="admin-section">
+          <h3>🚫 敏感词管理 ({bannedWordsList.length})</h3>
+          <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:14}}>用户注册昵称、修改资料时自动拦截以下关键词</p>
+          {/* 添加新词 */}
+          <div style={{display:'flex',gap:8,marginBottom:16}}>
+            <input type="text" value={newBannedWord} onChange={e=>setNewBannedWord(e.target.value)} placeholder="添加敏感词..." style={{flex:1,padding:'10px 12px',background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:6,color:'var(--text-primary)',fontSize:14,outline:'none'}}
+              onKeyDown={e=>{if(e.key==='Enter')addBannedWord();}} />
+            <button className="btn btn-primary" onClick={addBannedWord}>添加</button>
+          </div>
+          {/* 分类显示 */}
+          {['profanity','political','ads','competitor','custom'].map(cat=>{
+            const catWords=bannedWordsList.filter(w=>w.category===cat);
+            if(!catWords.length)return null;
+            const catNames={profanity:'🤬 脏话',political:'🏛️ 政治敏感',ads:'📢 广告/联系方式',competitor:'🏢 竞品',custom:'✏️ 自定义'};
+            return(
+              <div key={cat} style={{marginBottom:14}}>
+                <div style={{fontSize:13,fontWeight:600,color:'var(--text-secondary)',marginBottom:8}}>{catNames[cat]||cat} ({catWords.length})</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                  {catWords.map(w=>(
+                    <div key={w.id} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:14,fontSize:12}}>
+                      <span style={{color:'var(--text-primary)'}}>{w.word}</span>
+                      <button onClick={()=>deleteBannedWord(w.id)} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:14,lineHeight:1,padding:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>)}
+
+      {/* 主播改枪码管理 */}
+      {tab==='streamers'&&(<>
+        <div className="admin-section">
+          <h3>🎙️ 官方改枪码管理 ({officialCodes.length})</h3>
+          <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:14}}>管理官方同步的改枪码，可上下架或删除</p>
+          <div className="search-bar" style={{marginBottom:14,flex:'none'}}>
+            <span className="search-icon">🔍</span>
+            <input placeholder="搜索枪名、作者、方案名..." value={streamerSearch} onChange={e=>setStreamerSearch(e.target.value)} />
+          </div>
+          <div style={{display:'grid',gap:6}}>
+            {officialCodes.filter(c=>{
+              if(!streamerSearch.trim())return true;
+              const s=streamerSearch.toLowerCase();
+              return c.name?.toLowerCase().includes(s)||c.author_nickname?.toLowerCase().includes(s)||c.arms_name?.toLowerCase().includes(s);
+            }).map(c=>(
+              <div key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:c.is_hidden?'rgba(224,72,72,0.04)':'var(--bg-secondary)',border:`1px solid ${c.is_hidden?'rgba(224,72,72,0.2)':'var(--border)'}`,borderRadius:8,flexWrap:'wrap'}}>
+                {c.arms_pic && <img src={c.arms_pic} alt="" style={{width:36,height:26,objectFit:'contain',borderRadius:5,background:'linear-gradient(135deg,#1a2a3a,#1e3040)',flexShrink:0}} />}
+                <div style={{flex:1,minWidth:120}}>
+                  <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {c.name}
+                    {c.is_hidden && <span style={{marginLeft:6,fontSize:10,color:'#e04848',fontWeight:600}}>已下架</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{c.author_nickname} · {c.arms_category} · 使用{c.apply_num || 0}</div>
+                </div>
+                <div style={{display:'flex',gap:4,flexShrink:0}}>
+                  <button className="btn btn-small" style={{color:c.is_hidden?'#20e870':'#e0a030',border:`1px solid ${c.is_hidden?'rgba(32,232,112,0.25)':'rgba(224,160,48,0.25)'}`}} onClick={()=>toggleCodeHidden(c.id,!c.is_hidden)}>
+                    {c.is_hidden?'上架':'下架'}
+                  </button>
+                  <button className="btn btn-danger btn-small" onClick={()=>deleteOfficialCode(c.id,c.name)}>删除</button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </>)}

@@ -329,3 +329,11 @@ body {
   .filter-chip { padding: 4px 8px; font-size: 11px; }
   .gun-name { font-size: 15px; }
 }
+
+/* Hide scrollbar but keep scroll */
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.table-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+.table-scroll::-webkit-scrollbar { display: none; }
+.filter-bar { -ms-overflow-style: none; scrollbar-width: none; }
+.filter-bar::-webkit-scrollbar { display: none; }

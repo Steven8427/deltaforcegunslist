@@ -48,7 +48,7 @@ function Landing() {
         <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>改枪码 · 每日密码 · 制造利润 · 价格走势 · 卡战备</p>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 20, flexWrap: 'wrap' }}>
           {[{ label: '官方改枪码', value: stats.codes, color: '#20e870' }, { label: '官方主播', value: stats.streamers, color: '#18a0d0' }, { label: '自定义枪械', value: stats.guns, color: '#e0a030' }, { label: '改枪配置', value: stats.variants, color: '#d050d0' }].map(s => (
-            <div key={s.label} style={{ textAlign: 'center' }}><div style={{ fontFamily: "'Orbitron', monospace", fontSize: 24, fontWeight: 900, color: s.color }}>{s.value}</div><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.label}</div></div>
+            <div key={s.label} style={{ textAlign: 'center' }}><div style={{ fontFamily: "'Orbitron', monospace", fontSize: 24, fontWeight: 900, color: s.color }}>{s.value}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.label}</div></div>
           ))}
         </div>
       </div>
@@ -63,40 +63,41 @@ function Landing() {
           { to: '/profit', icon: '💰', label: '制造利润', color: '#e0a030' },
           { to: '/cards', icon: '🃏', label: '卡战备', color: '#4090f0' },
           { to: '/prices', icon: '📈', label: '价格走势', color: '#60c0c0' },
+          { to: '/items', icon: '📖', label: '物品图鉴', color: '#c060e0' },
         ].map(item => (
           <Link key={item.to} to={item.to} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 10px', textAlign: 'center', textDecoration: 'none', transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = `${item.color}50`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; }}>
-            <div style={{ fontSize: 26, marginBottom: 6 }}>{item.icon}</div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{item.label}</div>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>{item.icon}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{item.label}</div>
           </Link>
         ))}
       </div>
 
       {/* 今日密码 */}
       {passwords.length > 0 && (<div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 17, fontWeight: 700 }}>🔑 今日密码</h2><Link to="/daily" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 18, fontWeight: 700 }}>🔑 今日密码</h2><Link to="/daily" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
           {passwords.map(pw => { const m = PW_META[pw.map_name] || { icon: '🗺️', color: '#20e870' }; return (
             <div key={pw.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-              <div style={{ fontSize: 16, marginBottom: 2 }}>{m.icon}</div><div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>{pw.map_name}</div>
-              <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 20, fontWeight: 900, color: m.color, letterSpacing: 3 }}>{pw.secret}</div>
+              <div style={{ fontSize: 18, marginBottom: 2 }}>{m.icon}</div><div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{pw.map_name}</div>
+              <div style={{ fontFamily: "'Orbitron', monospace", fontSize: 22, fontWeight: 900, color: m.color, letterSpacing: 3 }}>{pw.secret}</div>
             </div>); })}
         </div>
       </div>)}
 
       {/* 热门主播 */}
       {topStreamers.length > 0 && (<div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 17, fontWeight: 700 }}>🎙️ 热门主播</h2><Link to="/streamers" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 18, fontWeight: 700 }}>🎙️ 热门主播</h2><Link to="/streamers" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
           {topStreamers.map(s => (
-            <Link key={s.name} to="/streamers" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 12px', textAlign: 'center', textDecoration: 'none', transition: 'all 0.2s' }}
+            <Link key={s.name} to="/streamers" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 12px', textAlign: 'center', textDecoration: 'none', transition: 'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(32,232,112,0.3)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; }}>
-              {s.avatar ? <img src={s.avatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)', marginBottom: 6 }} />
-              : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(32,232,112,0.1)', border: '2px solid var(--accent)', margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{s.name.charAt(0)}</div>}
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.count}方案 · {formatNum(s.apply)}使用</div>
+              {s.avatar ? <img src={s.avatar} alt="" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)', marginBottom: 8 }} />
+              : <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(32,232,112,0.1)', border: '2px solid var(--accent)', margin: '0 auto 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{s.name.charAt(0)}</div>}
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{s.count}方案 · {formatNum(s.apply)}使用</div>
             </Link>
           ))}
         </div>
@@ -104,15 +105,15 @@ function Landing() {
 
       {/* 热门改枪码 */}
       {hotCodes.length > 0 && (<div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 17, fontWeight: 700 }}>🔥 热门改枪码</h2><Link to="/official" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 18, fontWeight: 700 }}>🔥 热门改枪码</h2><Link to="/official" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
+        <div style={{ display: 'grid', gap: 10 }}>
           {hotCodes.map((code, idx) => (
-            <div key={code.id} onClick={() => copyCode(code.solution_code)} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center', transition: 'border-color 0.2s' }}
+            <div key={code.id} onClick={() => copyCode(code.solution_code)} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 14px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center', transition: 'border-color 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(32,232,112,0.3)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: idx < 3 ? 'rgba(224,160,48,0.15)' : 'var(--bg-secondary)', border: `1px solid ${idx < 3 ? 'rgba(224,160,48,0.3)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Orbitron', monospace", fontSize: 11, fontWeight: 700, color: idx < 3 ? '#e0a030' : 'var(--text-muted)' }}>{idx + 1}</div>
-              {code.arms_pic && <img src={code.arms_pic} alt="" style={{ width: 40, height: 30, objectFit: 'contain', borderRadius: 6, background: 'linear-gradient(135deg, #1a2a3a, #1e3040)', padding: 1, flexShrink: 0 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{code.name}</div><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{code.author_nickname} · {formatPrice(code.price)}</div></div>
-              <div style={{ fontSize: 12, color: '#e0a030', fontWeight: 700, fontFamily: "'Orbitron', monospace", flexShrink: 0 }}>{formatNum(code.apply_num)}</div>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, background: idx < 3 ? 'rgba(224,160,48,0.15)' : 'var(--bg-secondary)', border: `1px solid ${idx < 3 ? 'rgba(224,160,48,0.3)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Orbitron', monospace", fontSize: 12, fontWeight: 700, color: idx < 3 ? '#e0a030' : 'var(--text-muted)' }}>{idx + 1}</div>
+              {code.arms_pic && <img src={code.arms_pic} alt="" style={{ width: 52, height: 38, objectFit: 'contain', borderRadius: 6, background: 'linear-gradient(135deg, #1a2a3a, #1e3040)', border: '1px solid var(--border)', padding: 2, flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{code.name}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{code.author_nickname} · {formatPrice(code.price)}</div></div>
+              <div style={{ fontSize: 14, color: '#e0a030', fontWeight: 700, fontFamily: "'Orbitron', monospace", flexShrink: 0 }}>{formatNum(code.apply_num)}</div>
             </div>
           ))}
         </div>
@@ -120,13 +121,13 @@ function Landing() {
 
       {/* 今日最赚 */}
       {topMfg.length > 0 && (<div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 17, fontWeight: 700 }}>💰 今日最赚</h2><Link to="/profit" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><h2 style={{ fontSize: 18, fontWeight: 700 }}>💰 今日最赚</h2><Link to="/profit" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>查看全部 →</Link></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
           {topMfg.map(item => (
             <Link key={item.id} to="/profit" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, textDecoration: 'none', transition: 'border-color 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(32,232,112,0.3)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>{item.item_image && <img src={item.item_image} alt="" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, background: 'linear-gradient(135deg, #1a2a3a, #1e3040)' }} onError={e => e.target.style.display = 'none'} />}<div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.item_name}</div></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.place_name} · {item.period}h</span><span style={{ fontSize: 16, fontWeight: 900, color: '#20e870', fontFamily: "'Orbitron', monospace" }}>+{formatPrice(item.profit)}</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>{item.item_image && <img src={item.item_image} alt="" style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 6, background: 'linear-gradient(135deg, #1a2a3a, #1e3040)' }} onError={e => e.target.style.display = 'none'} />}<div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.item_name}</div></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.place_name} · {item.period}h</span><span style={{ fontSize: 17, fontWeight: 900, color: '#20e870', fontFamily: "'Orbitron', monospace" }}>+{formatPrice(item.profit)}</span></div>
             </Link>
           ))}
         </div>

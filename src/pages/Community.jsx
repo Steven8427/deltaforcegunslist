@@ -17,7 +17,18 @@ function Community() {
   // Auth
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
-  const [authForm, setAuthForm] = useState({ username: '', password: '', nickname: '' });
+  const [authForm, setAuthForm] = useState({ username: '', password: '', confirmPassword: '', nickname: '' });
+  const [showPw, setShowPw] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+
+  // Profile
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({ nickname: '', description: '' });
+  const [profileAvatar, setProfileAvatar] = useState(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Content filter
+  const [bannedWords, setBannedWords] = useState([]);
 
   // Detail page
   const [guns, setGuns] = useState([]);
@@ -37,6 +48,24 @@ function Community() {
 
   // Load saved login
   useEffect(() => { const s = localStorage.getItem('df_player'); if (s) try { setPlayer(JSON.parse(s)); } catch {} }, []);
+  useEffect(() => { supabase.from('banned_words').select('word').then(({ data }) => { if (data) setBannedWords(data.map(d => d.word.toLowerCase())); }); }, []);
+
+  // Content filter: banned words + patterns (phone/email/URL)
+  function checkContent(text) {
+    if (!text) return null;
+    const t = text.toLowerCase();
+    // Check banned words
+    for (const w of bannedWords) { if (t.includes(w)) return `包含违规内容「${w}」`; }
+    // Check phone numbers
+    if (/1[3-9]\d{9}/.test(text)) return '不允许包含手机号';
+    // Check email
+    if (/[\w.-]+@[\w.-]+\.\w+/.test(text)) return '不允许包含邮箱地址';
+    // Check URLs
+    if (/https?:\/\/|www\.|\.com|\.cn|\.net|\.org|\.top/i.test(text)) return '不允许包含网址链接';
+    // Check QQ/WeChat patterns
+    if (/[Qq]{2}\s*[:：]?\s*\d{5,}/.test(text) || /微信\s*[:：]?\s*\S{4,}/.test(text)) return '不允许包含联系方式';
+    return null;
+  }
 
   // Fetch player list with gun stats
   const fetchPlayerList = useCallback(async () => {
@@ -80,20 +109,70 @@ function Community() {
   async function handleAuth(e) {
     e.preventDefault();
     if (authMode === 'register') {
+      if (!agreeTerms) { toast.error('请先同意用户协议'); return; }
       if (!authForm.username.trim() || !authForm.password.trim()) { toast.error('用户名和密码必填'); return; }
       if (authForm.password.length < 6) { toast.error('密码至少6位'); return; }
+      if (authForm.password !== authForm.confirmPassword) { toast.error('两次密码不一致'); return; }
+      const nameCheck = checkContent(authForm.username.trim());
+      if (nameCheck) { toast.error(`用户名${nameCheck}`); return; }
+      if (authForm.nickname.trim()) {
+        const nickCheck = checkContent(authForm.nickname.trim());
+        if (nickCheck) { toast.error(`昵称${nickCheck}`); return; }
+      }
       const { data: exists } = await supabase.from('players').select('id').eq('username', authForm.username.trim().toLowerCase()).single();
       if (exists) { toast.error('用户名已存在'); return; }
       const { data, error } = await supabase.from('players').insert({ username: authForm.username.trim().toLowerCase(), password_hash: authForm.password, nickname: authForm.nickname.trim() || authForm.username.trim() }).select().single();
       if (error) { toast.error('注册失败'); return; }
-      setPlayer(data); localStorage.setItem('df_player', JSON.stringify(data)); toast.success('注册成功！'); setShowAuthModal(false); setAuthForm({ username: '', password: '', nickname: '' }); fetchPlayerList();
+      setPlayer(data); localStorage.setItem('df_player', JSON.stringify(data)); toast.success('注册成功！'); setShowAuthModal(false); setAuthForm({ username: '', password: '', confirmPassword: '', nickname: '' }); setShowPw(false); setAgreeTerms(false); fetchPlayerList();
     } else {
       const { data, error } = await supabase.from('players').select('*').eq('username', authForm.username.trim().toLowerCase()).eq('password_hash', authForm.password).single();
       if (error || !data) { toast.error('用户名或密码错误'); return; }
-      setPlayer(data); localStorage.setItem('df_player', JSON.stringify(data)); toast.success(`欢迎，${data.nickname || data.username}！`); setShowAuthModal(false); setAuthForm({ username: '', password: '', nickname: '' });
+      setPlayer(data); localStorage.setItem('df_player', JSON.stringify(data)); toast.success(`欢迎，${data.nickname || data.username}！`); setShowAuthModal(false); setAuthForm({ username: '', password: '', confirmPassword: '', nickname: '' }); setShowPw(false);
     }
   }
   function logout() { setPlayer(null); localStorage.removeItem('df_player'); toast.success('已退出'); }
+
+  function openProfile() {
+    if (!player) return;
+    setProfileForm({ nickname: player.nickname || '', description: player.description || '' });
+    setProfileAvatar(null);
+    setShowProfile(true);
+  }
+
+  async function saveProfile() {
+    if (!player) return;
+    // Content check
+    if (profileForm.nickname.trim()) {
+      const nickCheck = checkContent(profileForm.nickname.trim());
+      if (nickCheck) { toast.error(`昵称${nickCheck}`); return; }
+    }
+    if (profileForm.description.trim()) {
+      const descCheck = checkContent(profileForm.description.trim());
+      if (descCheck) { toast.error(`简介${descCheck}`); return; }
+    }
+    setProfileSaving(true);
+    let avatarUrl = null;
+    if (profileAvatar) {
+      try {
+        const ext = profileAvatar.name.split('.').pop();
+        const fname = `avatar_${player.id}_${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('gun-images').upload(fname, profileAvatar);
+        if (upErr) { toast.error('头像上传失败'); setProfileSaving(false); return; }
+        const { data: urlData } = supabase.storage.from('gun-images').getPublicUrl(fname);
+        avatarUrl = urlData.publicUrl;
+      } catch { toast.error('上传失败'); setProfileSaving(false); return; }
+    }
+    // Save as pending review
+    const updates = {
+      pending_nickname: profileForm.nickname.trim() || player.username,
+      pending_description: profileForm.description.trim(),
+      pending_avatar_url: avatarUrl,
+      profile_status: 'pending',
+    };
+    const { error } = await supabase.from('players').update(updates).eq('id', player.id);
+    if (error) { toast.error('提交失败'); setProfileSaving(false); return; }
+    toast.success('资料已提交，等待管理员审核'); setShowProfile(false); setProfileSaving(false);
+  }
 
   // Gun catalog search (for adding guns)
   async function searchCatalog(q) {
@@ -104,54 +183,57 @@ function Community() {
     setShowCatalog(true);
   }
 
-  // Add gun from catalog
+  // Add gun from catalog - optimistic local update
   async function addGunFromCatalog(item) {
     if (!player) return;
-    // Check if already has this gun
-    const existing = guns.find(g => g.name === item.object_name.replace(/突击步枪|射手步枪|狙击步枪|冲锋枪|轻机枪|通用机枪|霰弹枪|紧凑突击步枪|战斗步枪/g, '').trim());
+    const sfx = ['突击步枪','射手步枪','狙击步枪','冲锋枪','轻机枪','通用机枪','霰弹枪','紧凑突击步枪','战斗步枪'];
+    let name = item.object_name; for (const s of sfx) name = name.replace(s, '').trim();
+    const existing = guns.find(g => g.name === name);
     if (existing) { toast.error('已有此枪械'); setShowCatalog(false); setGunSearch(''); return; }
     const CLASS_TO_CAT = { gunRifle:'突击步枪', gunSMG:'冲锋枪', gunShotgun:'霰弹枪', gunSniper:'狙击步枪', gunMP:'射手步枪', gunLMG:'机枪', gunPistol:'手枪' };
     const cat = CLASS_TO_CAT[item.second_class] || item.second_class_cn || '突击步枪';
-    const sfx = ['突击步枪','射手步枪','狙击步枪','冲锋枪','轻机枪','通用机枪','霰弹枪','紧凑突击步枪','战斗步枪'];
-    let name = item.object_name; for (const s of sfx) name = name.replace(s, '').trim();
     const mx = guns.reduce((m, g) => Math.max(m, g.sort_order || 0), 0);
-    await supabase.from('guns').insert({ name, category: cat, image_url: item.pic || '', player_id: player.id, sort_order: mx + 1 });
+    const { data: newGun } = await supabase.from('guns').insert({ name, category: cat, image_url: item.pic || '', player_id: player.id, sort_order: mx + 1 }).select().single();
+    if (newGun) setGuns(prev => [...prev, { ...newGun, variants: [] }]);
     toast.success(`${name} 已添加！`);
     setShowCatalog(false); setGunSearch('');
-    fetchPlayerGuns(player.id);
   }
 
-  // Delete gun
+  // Delete gun - optimistic local update
   async function deleteGun(id, name) {
     if (!window.confirm(`删除 ${name}？其下所有改装码也会被删除！`)) return;
     await supabase.from('gun_variants').delete().eq('gun_id', id);
     await supabase.from('guns').delete().eq('id', id);
-    toast.success('已删除'); if (selectedGunId === id) setSelectedGunId('');
-    fetchPlayerGuns(player.id);
+    setGuns(prev => prev.filter(g => g.id !== id));
+    if (selectedGunId === id) setSelectedGunId('');
+    toast.success('已删除');
   }
 
-  // Add variant
+  // Add variant - optimistic local update
   async function addVariant() {
     if (!selectedGunId || !variantForm.code.trim()) { toast.error('请填写改枪码'); return; }
     const gun = guns.find(g => g.id === selectedGunId);
     const mx = gun ? gun.variants.reduce((m, v) => Math.max(m, v.sort_order || 0), 0) : 0;
-    await supabase.from('gun_variants').insert({ gun_id: selectedGunId, ...variantForm, sort_order: mx + 1 });
-    toast.success('添加成功！'); setVariantForm({ version: '', price: '', mod_type: '', code: '', effective_range: '' });
-    fetchPlayerGuns(player.id);
+    const { data: newV } = await supabase.from('gun_variants').insert({ gun_id: selectedGunId, ...variantForm, sort_order: mx + 1, status: 'pending' }).select().single();
+    if (newV) setGuns(prev => prev.map(g => g.id === selectedGunId ? { ...g, variants: [...g.variants, newV] } : g));
+    toast.success('已提交，等待管理员审核'); setVariantForm({ version: '', price: '', mod_type: '', code: '', effective_range: '' });
   }
 
-  // Delete variant
+  // Delete variant - optimistic local update
   async function deleteVariant(id) {
     if (!window.confirm('确定删除？')) return;
     await supabase.from('gun_variants').delete().eq('id', id);
-    toast.success('已删除'); fetchPlayerGuns(player.id);
+    setGuns(prev => prev.map(g => ({ ...g, variants: g.variants.filter(v => v.id !== id) })));
+    toast.success('已删除');
   }
 
-  // Update variant
+  // Update variant - optimistic local update
   async function updateVariant() {
     if (!editingVariant) return;
-    await supabase.from('gun_variants').update({ version: editingVariant.version, price: editingVariant.price, mod_type: editingVariant.mod_type, code: editingVariant.code, effective_range: editingVariant.effective_range }).eq('id', editingVariant.id);
-    toast.success('更新成功！'); setEditingVariant(null); fetchPlayerGuns(player.id);
+    const updates = { version: editingVariant.version, price: editingVariant.price, mod_type: editingVariant.mod_type, code: editingVariant.code, effective_range: editingVariant.effective_range };
+    await supabase.from('gun_variants').update(updates).eq('id', editingVariant.id);
+    setGuns(prev => prev.map(g => ({ ...g, variants: g.variants.map(v => v.id === editingVariant.id ? { ...v, ...updates } : v) })));
+    toast.success('更新成功！'); setEditingVariant(null);
   }
 
   function copyCode(code) { navigator.clipboard.writeText(code).then(() => toast.success('改枪码已复制！')).catch(() => { const ta = document.createElement('textarea'); ta.value = code; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast.success('改枪码已复制！'); }); }
@@ -161,16 +243,23 @@ function Community() {
   // Filter guns for display
   const versions = useMemo(() => { const s = new Set(); guns.forEach(g => g.variants.forEach(v => { if (v.version) s.add(v.version); })); return ['全部', ...Array.from(s).sort()]; }, [guns]);
 
+  const isOwnProfile = selectedPlayerId === player?.id;
+
   const filtered = useMemo(() => {
-    let r = guns;
+    let r = guns.map(g => ({
+      ...g,
+      variants: isOwnProfile ? g.variants : g.variants.filter(v => v.status === 'approved' || !v.status)
+    }));
     if (filterCat !== '全部') r = r.filter(g => g.category === filterCat);
     if (filterVer !== '全部') r = r.filter(g => g.variants.some(v => v.version === filterVer));
     if (detailSearch.trim()) { const s = detailSearch.toLowerCase(); r = r.filter(g => g.name.toLowerCase().includes(s) || g.category?.toLowerCase().includes(s) || g.variants.some(v => (v.mod_type || '').toLowerCase().includes(s))); }
     if (filterVer !== '全部') r = r.map(g => ({ ...g, variants: g.variants.filter(v => v.version === filterVer) }));
     if (sortBy === 'price_asc') r = [...r].sort((a, b) => Math.min(...a.variants.map(v => parseFloat(v.price) || 999)) - Math.min(...b.variants.map(v => parseFloat(v.price) || 999)));
     if (sortBy === 'price_desc') r = [...r].sort((a, b) => Math.max(...b.variants.map(v => parseFloat(v.price) || 0)) - Math.max(...a.variants.map(v => parseFloat(v.price) || 0)));
+    // Remove guns with no visible variants
+    r = r.filter(g => g.variants.length > 0);
     return r;
-  }, [guns, filterCat, filterVer, detailSearch, sortBy]);
+  }, [guns, filterCat, filterVer, detailSearch, sortBy, isOwnProfile]);
 
   // Player cards for main page
   const playerCards = useMemo(() => {
@@ -191,7 +280,6 @@ function Community() {
   }, [allPlayers, playerGunStats, player, search]);
 
   const selectedPlayer = selectedPlayerId ? allPlayers.find(p => p.id === selectedPlayerId) : null;
-  const isOwnProfile = selectedPlayerId === player?.id;
   const selectedGun = guns.find(g => g.id === selectedGunId);
 
   if (loading) return <div className="loading"><div className="spinner"></div>加载社区数据...</div>;
@@ -345,7 +433,10 @@ function Community() {
                             {showVersion && <td onClick={() => copyCode(v.code)} style={{ cursor: 'pointer' }}>{v.version && <span className={`version-badge ${getVersionClass(v.version)}`}>{v.version}</span>}</td>}
                             {showPrice && <td style={{ fontWeight: 600, cursor: 'pointer' }} onClick={() => copyCode(v.code)}>{v.price || '-'}</td>}
                             {showModType && <td style={{ cursor: 'pointer' }} onClick={() => copyCode(v.code)}>{v.mod_type || '-'}</td>}
-                            <td className="code-cell" onClick={() => copyCode(v.code)} style={{ cursor: 'pointer' }}>{v.code}</td>
+                            <td className="code-cell" onClick={() => copyCode(v.code)} style={{ cursor: 'pointer' }}>
+                              {v.code}
+                              {v.status === 'pending' && <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(224,160,48,0.15)', color: '#e0a030', fontWeight: 600 }}>待审核</span>}
+                            </td>
                             {showRange && <td onClick={() => copyCode(v.code)} style={{ cursor: 'pointer' }}>{v.effective_range ? <span className="range-badge">{v.effective_range}</span> : '-'}</td>}
                             {isOwnProfile && <td><div style={{ display: 'flex', gap: 3 }}><button className="btn btn-success btn-small" onClick={() => setEditingVariant({ ...v })}>编</button><button className="btn btn-danger btn-small" onClick={() => deleteVariant(v.id)}>删</button></div></td>}
                           </>)}
@@ -371,7 +462,13 @@ function Community() {
         <h1 className="page-title">🌐 玩家社区</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {player ? (<>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{player.nickname || player.username}</span>
+            <div onClick={openProfile} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '4px 10px', borderRadius: 20, background: 'rgba(32,232,112,0.06)', border: '1px solid rgba(32,232,112,0.15)', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(32,232,112,0.4)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(32,232,112,0.15)'; }}>
+              {player.avatar_url ? <img src={player.avatar_url} alt="" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+              : <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(32,232,112,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{(player.nickname || player.username || '?').charAt(0).toUpperCase()}</div>}
+              <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{player.nickname || player.username}</span>
+            </div>
             <button onClick={logout} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>退出</button>
           </>) : (<>
             <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); }} style={{ fontSize: 13, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>登录</button>
@@ -429,18 +526,104 @@ function Community() {
 
       {/* 登录弹窗 */}
       {showAuthModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setShowAuthModal(false)}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, maxWidth: 380, width: '100%' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, maxWidth: 380, width: '100%', position: 'relative' }}>
+            <button onClick={() => { setShowAuthModal(false); setShowPw(false); }} style={{ position: 'absolute', top: 12, right: 14, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-              <button className={`filter-chip ${authMode === 'login' ? 'active' : ''}`} onClick={() => setAuthMode('login')}>登录</button>
-              <button className={`filter-chip ${authMode === 'register' ? 'active' : ''}`} onClick={() => setAuthMode('register')}>注册</button>
+              <button className={`filter-chip ${authMode === 'login' ? 'active' : ''}`} onClick={() => { setAuthMode('login'); setShowPw(false); }}>登录</button>
+              <button className={`filter-chip ${authMode === 'register' ? 'active' : ''}`} onClick={() => { setAuthMode('register'); setShowPw(false); }}>注册</button>
             </div>
             <form onSubmit={handleAuth}>
-              <div className="form-group"><label>用户名</label><input type="text" value={authForm.username} onChange={e => setAuthForm({ ...authForm, username: e.target.value })} placeholder="用户名" /></div>
-              <div className="form-group"><label>密码{authMode === 'register' ? '（至少6位）' : ''}</label><input type="password" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} placeholder="密码" /></div>
+              <div className="form-group"><label>用户名</label><input type="text" value={authForm.username} onChange={e => setAuthForm({ ...authForm, username: e.target.value })} placeholder="用户名" autoComplete="username" /></div>
+              <div className="form-group">
+                <label>密码{authMode === 'register' ? '（至少6位）' : ''}</label>
+                <div style={{ position: 'relative' }}>
+                  <input type={showPw ? 'text' : 'password'} value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} placeholder="密码" style={{ paddingRight: 40 }} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
+                  <button type="button" onClick={() => setShowPw(!showPw)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: showPw ? 'var(--accent)' : 'var(--text-muted)', padding: 4 }}>{showPw ? '👁️' : '👁️‍🗨️'}</button>
+                </div>
+              </div>
+              {authMode === 'register' && (
+                <div className="form-group">
+                  <label>确认密码</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPw ? 'text' : 'password'} value={authForm.confirmPassword} onChange={e => setAuthForm({ ...authForm, confirmPassword: e.target.value })} placeholder="再次输入密码" style={{ paddingRight: 40 }} autoComplete="new-password" />
+                    <button type="button" onClick={() => setShowPw(!showPw)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: showPw ? 'var(--accent)' : 'var(--text-muted)', padding: 4 }}>{showPw ? '👁️' : '👁️‍🗨️'}</button>
+                  </div>
+                  {authForm.password && authForm.confirmPassword && authForm.password !== authForm.confirmPassword && (
+                    <div style={{ fontSize: 11, color: '#e04848', marginTop: 4 }}>两次密码不一致</div>
+                  )}
+                  {authForm.password && authForm.confirmPassword && authForm.password === authForm.confirmPassword && (
+                    <div style={{ fontSize: 11, color: '#20e870', marginTop: 4 }}>✓ 密码一致</div>
+                  )}
+                </div>
+              )}
               {authMode === 'register' && <div className="form-group"><label>昵称（选填）</label><input type="text" value={authForm.nickname} onChange={e => setAuthForm({ ...authForm, nickname: e.target.value })} placeholder="昵称" /></div>}
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }}>{authMode === 'register' ? '注册' : '登录'}</button>
+              {authMode === 'register' && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    <input type="checkbox" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
+                    <span>我已阅读并同意 <a href="/legal?tab=terms" target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>《用户协议》</a> 和 <a href="/legal?tab=privacy" target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>《隐私政策》</a></span>
+                  </label>
+                </div>
+              )}
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 4, opacity: authMode === 'register' && !agreeTerms ? 0.5 : 1 }}>{authMode === 'register' ? '注册' : '登录'}</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 个人资料弹窗 */}
+      {showProfile && player && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, maxWidth: 420, width: '100%', position: 'relative' }}>
+            <button onClick={() => setShowProfile(false)} style={{ position: 'absolute', top: 12, right: 14, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, background: 'var(--gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>👤 个人资料</h3>
+
+            {player.profile_status === 'pending' && (
+              <div style={{ padding: '8px 12px', marginBottom: 14, borderRadius: 8, background: 'rgba(224,160,48,0.1)', border: '1px solid rgba(224,160,48,0.25)', fontSize: 12, color: '#e0a030' }}>
+                ⏳ 你有一份资料修改正在审核中，审核通过后自动生效
+              </div>
+            )}
+
+            {/* 头像 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <div style={{ position: 'relative' }}>
+                {(profileAvatar ? URL.createObjectURL(profileAvatar) : player.avatar_url) ? (
+                  <img src={profileAvatar ? URL.createObjectURL(profileAvatar) : player.avatar_url} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--accent)' }} />
+                ) : (
+                  <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(32,232,112,0.12)', border: '3px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700 }}>
+                    {(player.nickname || player.username || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <label style={{ position: 'absolute', bottom: -2, right: -2, width: 26, height: 26, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, color: '#060d14', fontWeight: 700, border: '2px solid var(--bg-card)' }}>
+                  📷
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) setProfileAvatar(e.target.files[0]); }} />
+                </label>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>@{player.username}</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{player.nickname || player.username}</div>
+                {player.description && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{player.description}</div>}
+              </div>
+            </div>
+
+            {/* 表单 */}
+            <div className="form-group">
+              <label>昵称</label>
+              <input type="text" value={profileForm.nickname} onChange={e => setProfileForm({ ...profileForm, nickname: e.target.value })} placeholder="显示名称" />
+            </div>
+            <div className="form-group">
+              <label>个人简介</label>
+              <input type="text" value={profileForm.description} onChange={e => setProfileForm({ ...profileForm, description: e.target.value })} placeholder="一句话介绍自己" />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn btn-primary" onClick={saveProfile} disabled={profileSaving} style={{ flex: 1, justifyContent: 'center' }}>
+                {profileSaving ? '保存中...' : '💾 保存'}
+              </button>
+              <button className="btn" onClick={() => setShowProfile(false)} style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}>取消</button>
+            </div>
           </div>
         </div>
       )}
