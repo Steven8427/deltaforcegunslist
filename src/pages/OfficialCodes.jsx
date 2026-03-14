@@ -1,35 +1,31 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
+import { useCachedData } from '../dataCache';
 
 const CAT_COLOR = {"突击步枪":"#30d060","战斗步枪":"#e0a030","射手步枪":"#50b0e0","冲锋枪":"#d050d0","机枪":"#e06030","狙击步枪":"#4090f0","连狙":"#60c0c0","霰弹枪":"#d04040","手枪":"#a0a0a0","弓弩":"#90d040"};
 const SLOT_NAME = { "1":"弹匣", "2":"枪口", "3":"下挂/握把", "5":"枪托", "6":"瞄具", "8":"激光指示器", "11":"护木", "17":"导轨配件", "20":"导轨配件", "32":"导轨配件", "34":"导轨配件", "35":"导轨配件", "44":"弹鼓" };
 
 function OfficialCodes() {
-  const [codes, setCodes] = useState([]);
-  const [itemsMap, setItemsMap] = useState({});
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('全部');
   const [sortBy, setSortBy] = useState('apply');
-  const [lastSync, setLastSync] = useState('');
   const [expandedId, setExpandedId] = useState(null);
 
-  useEffect(() => {
-    async function fetch() {
-      setLoading(true);
-      const [{ data: codesData }, { data: itemsData }] = await Promise.all([
-        supabase.from('official_gun_codes').select('*').neq('is_hidden', true).order('sort_order'),
-        supabase.from('game_items').select('object_id, object_name, pic, avg_price, grade'),
-      ]);
-      if (codesData?.length) { setCodes(codesData); setLastSync(codesData[0].synced_at); }
-      const map = {};
-      (itemsData || []).forEach(i => { map[i.object_id] = i; });
-      setItemsMap(map);
-      setLoading(false);
-    }
-    fetch();
+  const fetchData = useCallback(async () => {
+    const [{ data: codesData }, { data: itemsData }] = await Promise.all([
+      supabase.from('official_gun_codes').select('*').neq('is_hidden', true).order('sort_order'),
+      supabase.from('game_items').select('object_id, object_name, pic, avg_price, grade'),
+    ]);
+    const map = {};
+    (itemsData || []).forEach(i => { map[i.object_id] = i; });
+    return { codes: codesData || [], itemsMap: map, lastSync: codesData?.[0]?.synced_at || '' };
   }, []);
+
+  const [data, loading] = useCachedData('official_codes', fetchData);
+  const codes = data?.codes || [];
+  const itemsMap = data?.itemsMap || {};
+  const lastSync = data?.lastSync || '';
 
   const categories = useMemo(() => {
     const s = new Set(); codes.forEach(c => { if (c.arms_category) s.add(c.arms_category); });

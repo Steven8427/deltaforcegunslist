@@ -1,34 +1,30 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
+import { useCachedData } from '../dataCache';
 
 const CAT_COLOR = {"突击步枪":"#30d060","战斗步枪":"#e0a030","射手步枪":"#50b0e0","冲锋枪":"#d050d0","机枪":"#e06030","狙击步枪":"#4090f0","连狙":"#60c0c0","霰弹枪":"#d04040","手枪":"#a0a0a0","弓弩":"#90d040"};
 const SLOT_NAME = {"1":"弹匣","2":"枪口","3":"握把","5":"枪托","6":"瞄具","8":"激光","11":"护木","17":"导轨","20":"导轨","32":"导轨","34":"导轨","35":"导轨","44":"弹鼓"};
 
 function Streamers() {
-  const [codes, setCodes] = useState([]);
-  const [itemsMap, setItemsMap] = useState({});
-  const [loading, setLoading] = useState(true);
   const [selectedStreamer, setSelectedStreamer] = useState(null);
   const [search, setSearch] = useState('');
   const [codeSearch, setCodeSearch] = useState('');
   const [expandedId, setExpandedId] = useState(null);
 
-  useEffect(() => {
-    async function fetch() {
-      setLoading(true);
-      const [{ data: codesData }, { data: itemsData }] = await Promise.all([
-        supabase.from('official_gun_codes').select('*').neq('is_hidden', true).order('apply_num', { ascending: false }),
-        supabase.from('game_items').select('object_id, object_name, pic, avg_price, grade, second_class_cn'),
-      ]);
-      setCodes(codesData || []);
-      const map = {};
-      (itemsData || []).forEach(i => { map[i.object_id] = i; });
-      setItemsMap(map);
-      setLoading(false);
-    }
-    fetch();
+  const fetchData = useCallback(async () => {
+    const [{ data: codesData }, { data: itemsData }] = await Promise.all([
+      supabase.from('official_gun_codes').select('*').neq('is_hidden', true).order('apply_num', { ascending: false }),
+      supabase.from('game_items').select('object_id, object_name, pic, avg_price, grade, second_class_cn'),
+    ]);
+    const map = {};
+    (itemsData || []).forEach(i => { map[i.object_id] = i; });
+    return { codes: codesData || [], itemsMap: map };
   }, []);
+
+  const [data, loading] = useCachedData('streamers', fetchData);
+  const codes = data?.codes || [];
+  const itemsMap = data?.itemsMap || {};
 
   const streamers = useMemo(() => {
     const map = {};

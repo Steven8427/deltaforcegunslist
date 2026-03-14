@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
+import { useCachedData } from '../dataCache';
 
 const TIERS = [
   { key: '11w', name: '大坝、长弓机密', budget: '11W', color: '#20e870' },
@@ -15,21 +16,18 @@ const SC = { '枪械拉满':'#e04848', '均衡套装':'#20e870', '胸挂拉满':
 const SI = { '枪械拉满':'🔫', '均衡套装':'⚖️', '胸挂拉满':'🦺', '轻装跑图':'🏃' };
 
 function Loadout() {
-  const [presets, setPresets] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [selectedTier, setSelectedTier] = useState('11w');
   const [viewMode, setViewMode] = useState('strategy');
-  const [lastUpdate, setLastUpdate] = useState('');
   const [expandedId, setExpandedId] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { data } = await supabase.from('loadout_presets').select('*').order('sort_order');
-      if (data?.length) { setPresets(data); setLastUpdate(data[0].updated_at); }
-      setLoading(false);
-    })();
+  const fetchPresets = useCallback(async () => {
+    const { data } = await supabase.from('loadout_presets').select('*').order('sort_order');
+    return data || [];
   }, []);
+
+  const [rawPresets, loading] = useCachedData('loadout_presets', fetchPresets);
+  const presets = rawPresets || [];
+  const lastUpdate = presets[0]?.updated_at || '';
 
   const fmtP = n => (!n && n !== 0) ? '-' : '$' + n.toLocaleString();
   const fmtW = n => { if (!n) return '-'; if (n >= 10000) return (n/10000).toFixed(1) + 'w'; return n.toLocaleString(); };

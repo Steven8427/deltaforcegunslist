@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
+import { useCachedData } from '../dataCache';
 
 const GRADE_COLOR = { 6: '#e04848', 5: '#ffc040', 4: '#c060e0', 3: '#40a0e0', 2: '#40d070', 1: '#c0c8d0', 0: '#6080a0' };
 const GRADE_NAME = { 6: '传说', 5: '史诗', 4: '稀有', 3: '精良', 2: '普通', 1: '简陋', 0: '无' };
@@ -7,8 +8,6 @@ const CLASS_ICON = { 'props': '📦', 'gun': '🔫', 'attachment': '🔧', 'armo
 const CLASS_NAME = { 'props': '物资道具', 'gun': '枪械', 'attachment': '配件', 'armor': '护甲', 'equipment': '装备', 'melee': '近战' };
 
 function ItemCatalog() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [primaryFilter, setPrimaryFilter] = useState('全部');
   const [subFilter, setSubFilter] = useState('全部');
@@ -16,15 +15,13 @@ function ItemCatalog() {
   const [sortBy, setSortBy] = useState('grade_desc');
   const [selectedItem, setSelectedItem] = useState(null);
 
-  useEffect(() => {
-    async function fetch() {
-      setLoading(true);
-      const { data } = await supabase.from('game_items').select('*').order('grade', { ascending: false }).order('avg_price', { ascending: false });
-      setItems(data || []);
-      setLoading(false);
-    }
-    fetch();
+  const fetchItems = useCallback(async () => {
+    const { data } = await supabase.from('game_items').select('*').order('grade', { ascending: false }).order('avg_price', { ascending: false });
+    return data || [];
   }, []);
+
+  const [rawItems, loading] = useCachedData('item_catalog', fetchItems);
+  const items = rawItems || [];
 
   // 动态主分类 tab（只显示有数据的）
   const primaryTabs = useMemo(() => {
