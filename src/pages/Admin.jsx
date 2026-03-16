@@ -34,6 +34,11 @@ function Admin({ isAdmin, setIsAdmin }) {
   const [pendingProfiles, setPendingProfiles] = useState([]);
   const [bannedWordsList, setBannedWordsList] = useState([]);
   const [newBannedWord, setNewBannedWord] = useState('');
+  const [qqCreds, setQqCreds] = useState({ openid: '', access_token: '', updated_at: '' });
+  const [qqForm, setQqForm] = useState({ openid: '', access_token: '' });
+  const [qqSaving, setQqSaving] = useState(false);
+  const [customStreamer, setCustomStreamer] = useState({ name: '', author_nickname: '', author_avatar: '', arms_name: '', arms_category: '突击步枪', solution_code: '', price: '', author_comment: '' });
+  const [customStreamerAvatar, setCustomStreamerAvatar] = useState(null);
 
   const [newAuthor, setNewAuthor] = useState({ name: '', slug: '', description: '' });
   const [newAuthorAvatar, setNewAuthorAvatar] = useState(null);
@@ -138,7 +143,12 @@ function Admin({ isAdmin, setIsAdmin }) {
     setBannedWordsList(data || []);
   }, []);
 
-  useEffect(() => { if (isAdmin) { fetchAll(); fetchPasswords(); if (isSuper) { fetchAdmins(); fetchReviews(); fetchCommunity(); fetchPendingCodes(); fetchOfficialCodes(); fetchPendingProfiles(); fetchBannedWords(); } } }, [isAdmin, fetchAll, fetchPasswords, fetchAdmins, fetchReviews, fetchCommunity, fetchPendingCodes, fetchOfficialCodes, fetchPendingProfiles, fetchBannedWords, isSuper]);
+  const fetchQqCreds = useCallback(async () => {
+    const { data } = await supabase.from('qq_credentials').select('*').eq('id', 1).single();
+    if (data) { setQqCreds(data); setQqForm({ openid: data.openid || '', access_token: data.access_token || '' }); }
+  }, []);
+
+  useEffect(() => { if (isAdmin) { fetchAll(); fetchPasswords(); if (isSuper) { fetchAdmins(); fetchReviews(); fetchCommunity(); fetchPendingCodes(); fetchOfficialCodes(); fetchPendingProfiles(); fetchBannedWords(); fetchQqCreds(); } } }, [isAdmin, fetchAll, fetchPasswords, fetchAdmins, fetchReviews, fetchCommunity, fetchPendingCodes, fetchOfficialCodes, fetchPendingProfiles, fetchBannedWords, fetchQqCreds, isSuper]);
 
   // 搜索枪械目录
   async function searchCatalog(query) {
@@ -284,6 +294,44 @@ function Admin({ isAdmin, setIsAdmin }) {
     toast.success('已删除'); fetchOfficialCodes();
   }
 
+  // 手动添加主播改枪码
+  async function addCustomStreamer() {
+    if (!customStreamer.name.trim() || !customStreamer.author_nickname.trim() || !customStreamer.solution_code.trim()) {
+      toast.error('方案名、主播名和改枪码必填'); return;
+    }
+    let avatarUrl = customStreamer.author_avatar;
+    if (customStreamerAvatar) {
+      try {
+        const ext = customStreamerAvatar.name.split('.').pop();
+        const fname = `streamer_${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('gun-images').upload(fname, customStreamerAvatar);
+        if (upErr) { toast.error('头像上传失败'); return; }
+        const { data: urlData } = supabase.storage.from('gun-images').getPublicUrl(fname);
+        avatarUrl = urlData.publicUrl;
+      } catch { toast.error('上传失败'); return; }
+    }
+    // Get max sort_order
+    const maxSort = officialCodes.reduce((m, c) => Math.max(m, c.sort_order || 0), 0);
+    const { error } = await supabase.from('official_gun_codes').insert({
+      name: customStreamer.name.trim(),
+      author_nickname: customStreamer.author_nickname.trim(),
+      author_avatar: avatarUrl || null,
+      arms_name: customStreamer.arms_name.trim() || customStreamer.name.trim(),
+      arms_category: customStreamer.arms_category,
+      solution_code: customStreamer.solution_code.trim(),
+      price: parseInt(customStreamer.price) || 0,
+      author_comment: customStreamer.author_comment.trim() || null,
+      source: 'custom',
+      sort_order: maxSort + 1,
+      synced_at: new Date().toISOString(),
+    });
+    if (error) { toast.error('添加失败：' + error.message); return; }
+    toast.success('主播改枪码已添加！');
+    setCustomStreamer({ name: '', author_nickname: '', author_avatar: '', arms_name: '', arms_category: '突击步枪', solution_code: '', price: '', author_comment: '' });
+    setCustomStreamerAvatar(null);
+    fetchOfficialCodes();
+  }
+
   // 玩家资料审核
   async function approveProfile(pid) {
     const p = pendingProfiles.find(x => x.id === pid);
@@ -311,6 +359,20 @@ function Admin({ isAdmin, setIsAdmin }) {
   async function deleteBannedWord(id) {
     await supabase.from('banned_words').delete().eq('id', id);
     toast.success('已删除'); fetchBannedWords();
+  }
+
+  async function updateQqCreds() {
+    if (!qqForm.openid.trim() || !qqForm.access_token.trim()) { toast.error('openid 和 access_token 必填'); return; }
+    setQqSaving(true);
+    const { error } = await supabase.from('qq_credentials').update({
+      openid: qqForm.openid.trim(),
+      access_token: qqForm.access_token.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1);
+    setQqSaving(false);
+    if (error) { toast.error('保存失败'); return; }
+    toast.success('QQ 凭证已更新！数据将在下次定时任务时自动刷新');
+    fetchQqCreds();
   }
 
   // 改装码表格
@@ -600,7 +662,31 @@ function Admin({ isAdmin, setIsAdmin }) {
       </>)}
 
       {/* 数据刷新 */}
-      {tab==='data'&&(
+      {tab==='data'&&(<>
+        {/* QQ 凭证 */}
+        <div className="admin-section">
+          <h3>🔑 QQ API 凭证</h3>
+          <p style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
+            所有数据刷新依赖此凭证，过期后需重新获取。
+            上次更新：<span style={{color: qqCreds.updated_at ? (Date.now() - new Date(qqCreds.updated_at).getTime() > 2*86400000 ? '#e04848' : '#20e870') : '#e04848', fontWeight:600}}>
+              {qqCreds.updated_at ? new Date(qqCreds.updated_at).toLocaleString('zh-CN') : '未知'}
+            </span>
+            {qqCreds.updated_at && Date.now() - new Date(qqCreds.updated_at).getTime() > 2*86400000 && <span style={{color:'#e04848',fontWeight:600}}> ⚠️ 可能已过期</span>}
+          </p>
+          <div style={{display:'grid',gap:10,marginBottom:12}}>
+            <div className="form-group" style={{margin:0}}>
+              <label>OpenID</label>
+              <input type="text" value={qqForm.openid} onChange={e=>setQqForm({...qqForm,openid:e.target.value})} placeholder="openid" style={{fontFamily:'monospace',fontSize:13}} />
+            </div>
+            <div className="form-group" style={{margin:0}}>
+              <label>Access Token</label>
+              <input type="text" value={qqForm.access_token} onChange={e=>setQqForm({...qqForm,access_token:e.target.value})} placeholder="access_token" style={{fontFamily:'monospace',fontSize:13}} />
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={updateQqCreds} disabled={qqSaving}>{qqSaving ? '保存中...' : '💾 保存凭证'}</button>
+        </div>
+
+        {/* 数据刷新 */}
         <div className="admin-section">
           <h3>📊 数据刷新</h3>
           <div style={{display:'grid',gap:10}}>
@@ -612,7 +698,7 @@ function Admin({ isAdmin, setIsAdmin }) {
             ))}
           </div>
         </div>
-      )}
+      </>)}
 
       {/* 管理员 */}
       {tab==='admins'&&(<>
@@ -773,9 +859,60 @@ function Admin({ isAdmin, setIsAdmin }) {
 
       {/* 主播改枪码管理 */}
       {tab==='streamers'&&(<>
+        {/* 手动添加 */}
         <div className="admin-section">
-          <h3>🎙️ 官方改枪码管理 ({officialCodes.length})</h3>
-          <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:14}}>管理官方同步的改枪码，可上下架或删除</p>
+          <h3>➕ 添加主播改枪码</h3>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+            <div className="form-group" style={{margin:0}}>
+              <label>方案名称 *</label>
+              <input type="text" value={customStreamer.name} onChange={e=>setCustomStreamer({...customStreamer,name:e.target.value})} placeholder="如：M14 全程一枪流" />
+            </div>
+            <div className="form-group" style={{margin:0}}>
+              <label>主播/作者名 *</label>
+              <input type="text" value={customStreamer.author_nickname} onChange={e=>setCustomStreamer({...customStreamer,author_nickname:e.target.value})} placeholder="主播昵称" />
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:10}}>
+            <div className="form-group" style={{margin:0}}>
+              <label>枪械名称</label>
+              <input type="text" value={customStreamer.arms_name} onChange={e=>setCustomStreamer({...customStreamer,arms_name:e.target.value})} placeholder="M14射手步枪" />
+            </div>
+            <div className="form-group" style={{margin:0}}>
+              <label>枪械类型</label>
+              <select value={customStreamer.arms_category} onChange={e=>setCustomStreamer({...customStreamer,arms_category:e.target.value})} style={{width:'100%',padding:'10px 12px',background:'var(--bg-secondary)',border:'1px solid var(--border)',borderRadius:6,color:'var(--text-primary)',fontSize:14}}>
+                {['突击步枪','战斗步枪','射手步枪','冲锋枪','机枪','狙击步枪','连狙','霰弹枪','手枪','弓弩'].map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{margin:0}}>
+              <label>改枪价格</label>
+              <input type="text" value={customStreamer.price} onChange={e=>setCustomStreamer({...customStreamer,price:e.target.value})} placeholder="如 85000" />
+            </div>
+          </div>
+          <div className="form-group" style={{margin:'0 0 10px 0'}}>
+            <label>改枪码 *</label>
+            <input type="text" value={customStreamer.solution_code} onChange={e=>setCustomStreamer({...customStreamer,solution_code:e.target.value})} placeholder="粘贴改枪码" />
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+            <div className="form-group" style={{margin:0}}>
+              <label>主播头像</label>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                {(customStreamerAvatar || customStreamer.author_avatar) && (
+                  <img src={customStreamerAvatar ? URL.createObjectURL(customStreamerAvatar) : customStreamer.author_avatar} alt="" style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} />
+                )}
+                <input type="file" accept="image/*" onChange={e=>{if(e.target.files?.[0])setCustomStreamerAvatar(e.target.files[0]);}} style={{fontSize:12}} />
+              </div>
+            </div>
+            <div className="form-group" style={{margin:0}}>
+              <label>备注说明</label>
+              <input type="text" value={customStreamer.author_comment} onChange={e=>setCustomStreamer({...customStreamer,author_comment:e.target.value})} placeholder="选填" />
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={addCustomStreamer}>➕ 添加</button>
+        </div>
+
+        {/* 管理列表 */}
+        <div className="admin-section">
+          <h3>🎙️ 改枪码管理 ({officialCodes.length})</h3>
           <div className="search-bar" style={{marginBottom:14,flex:'none'}}>
             <span className="search-icon">🔍</span>
             <input placeholder="搜索枪名、作者、方案名..." value={streamerSearch} onChange={e=>setStreamerSearch(e.target.value)} />
@@ -787,13 +924,15 @@ function Admin({ isAdmin, setIsAdmin }) {
               return c.name?.toLowerCase().includes(s)||c.author_nickname?.toLowerCase().includes(s)||c.arms_name?.toLowerCase().includes(s);
             }).map(c=>(
               <div key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:c.is_hidden?'rgba(224,72,72,0.04)':'var(--bg-secondary)',border:`1px solid ${c.is_hidden?'rgba(224,72,72,0.2)':'var(--border)'}`,borderRadius:8,flexWrap:'wrap'}}>
+                {c.author_avatar && <img src={c.author_avatar} alt="" style={{width:24,height:24,borderRadius:'50%',objectFit:'cover',flexShrink:0}} />}
                 {c.arms_pic && <img src={c.arms_pic} alt="" style={{width:36,height:26,objectFit:'contain',borderRadius:5,background:'linear-gradient(135deg,#1a2a3a,#1e3040)',flexShrink:0}} />}
                 <div style={{flex:1,minWidth:120}}>
                   <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                     {c.name}
                     {c.is_hidden && <span style={{marginLeft:6,fontSize:10,color:'#e04848',fontWeight:600}}>已下架</span>}
+                    {c.source==='custom' && <span style={{marginLeft:6,fontSize:10,padding:'1px 5px',borderRadius:4,background:'rgba(24,160,208,0.12)',color:'#18a0d0',fontWeight:600}}>自定义</span>}
                   </div>
-                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{c.author_nickname} · {c.arms_category} · 使用{c.apply_num || 0}</div>
+                  <div style={{fontSize:11,color:'var(--text-muted)'}}>{c.author_nickname} · {c.arms_category}{c.price ? ` · ${c.price}` : ''}</div>
                 </div>
                 <div style={{display:'flex',gap:4,flexShrink:0}}>
                   <button className="btn btn-small" style={{color:c.is_hidden?'#20e870':'#e0a030',border:`1px solid ${c.is_hidden?'rgba(32,232,112,0.25)':'rgba(224,160,48,0.25)'}`}} onClick={()=>toggleCodeHidden(c.id,!c.is_hidden)}>
